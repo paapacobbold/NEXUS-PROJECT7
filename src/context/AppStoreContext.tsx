@@ -1,0 +1,72 @@
+import React, { createContext, useContext } from 'react';
+import {
+  CommunityItem,
+  InPersonMeetup,
+  NotificationPrefs,
+  SessionItem,
+  ThreadPreview,
+  UserProfile,
+  filterSections,
+} from '../data/mockData';
+
+export type AppRoute =
+  | 'splash'
+  | 'onboarding'
+  | 'welcome'
+  | 'signup'
+  | 'signin'
+  | 'main-home'
+  | 'main-communities'
+  | 'main-sessions'
+  | 'main-chat'
+  | 'main-profile'
+  | 'community-details'
+  | 'create-community'
+  | 'schedule-session'
+  | 'create-meetup'
+  | 'leaderboard'
+  | 'recordings'
+  | 'filters'
+  | 'private-chat'
+  | 'session-lobby'
+  | 'edit-profile'
+  | 'change-password'
+  | 'notification-preferences';
+
+export type TabKey = 'home' | 'communities' | 'sessions' | 'chat' | 'profile';
+export type FilterKey = keyof typeof filterSections;
+export type FilterState = Record<FilterKey, string[]>;
+export type ThemeMode = 'light' | 'dark' | 'midnight';
+
+export type AppStore = {
+  theme: ThemeMode;
+  setTheme: (theme: ThemeMode) => void;
+  profile: UserProfile;
+  updateProfile: (patch: Partial<UserProfile>) => void;
+  notificationPrefs: NotificationPrefs;
+  toggleNotification: (key: keyof NotificationPrefs) => void;
+  threads: ThreadPreview[];
+  messagesByThread: Record<string, { id: string; sender: 'me' | 'them'; text: string; time: string }[]>;
+  sendMessage: (threadId: string, text: string) => void;
+  selectedFilters: FilterState;
+  toggleFilter: (section: FilterKey, value: string) => void;
+  resetFilters: () => void;
+  communitiesList: CommunityItem[];
+  toggleJoinCommunity: (communityId: string) => void;
+  addCommunity: (name: string, subject: string, description: string) => void;
+  sessionsList: SessionItem[];
+  addSession: (title: string, tag: string, time: string) => void;
+  meetupsList: InPersonMeetup[];
+  toggleRSVPMeetup: (meetupId: string) => void;
+  addMeetup: (title: string, location: string, dateTime: string) => void;
+};
+
+export const AppStoreContext = createContext<AppStore | null>(null);
+
+export const useAppStore = (): AppStore => {
+  const value = useContext(AppStoreContext);
+  if (!value) {
+    throw new Error('AppStoreContext is not available');
+  }
+  return value;
+};
