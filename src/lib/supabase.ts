@@ -1,22 +1,48 @@
 import { createClient } from '@supabase/supabase-js';
-import { CommunityItem, SessionItem, UserProfile, MessageItem, InPersonMeetup } from '../data/mockData';
+import { CommunityItem, SessionItem, UserProfile, MessageItem, InPersonMeetup, ThreadPreview, DEFAULT_AVATAR } from '../data/mockData';
 
-const rawUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
-const supabaseUrl = rawUrl.replace(/\/rest\/v1\/?$/, '').trim();
-const supabaseAnonKey = (process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '').trim();
+let _clientInstance: any = null;
 
-export const supabase =
-  supabaseUrl && supabaseAnonKey
-    ? createClient(supabaseUrl, supabaseAnonKey)
-    : null;
+export function isSupabaseKeyValid(key: string): boolean {
+  if (!key || typeof key !== 'string') return false;
+  const trimmed = key.trim();
+  if (
+    !trimmed ||
+    trimmed === 'your-anon-key' ||
+    trimmed === 'YOUR_SUPABASE_ANON_KEY'
+  ) {
+    return false;
+  }
+  return true;
+}
 
-export const hasSupabaseEnv = Boolean(supabaseUrl && supabaseAnonKey);
+export function getSupabaseClient() {
+  const rawUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+  const supabaseUrl = rawUrl.replace(/\/rest\/v1\/?$/, '').trim();
+  const supabaseAnonKey = (process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '').trim();
+
+  if (!supabaseUrl || !isSupabaseKeyValid(supabaseAnonKey)) {
+    return null;
+  }
+
+  if (!_clientInstance) {
+    _clientInstance = createClient(supabaseUrl, supabaseAnonKey);
+  }
+  return _clientInstance;
+}
+
+export const supabase = getSupabaseClient();
+export const hasSupabaseEnv = Boolean(
+  (process.env.EXPO_PUBLIC_SUPABASE_URL || '').trim() &&
+  isSupabaseKeyValid((process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '').trim())
+);
 
 // --- AUTH SERVICES ---
 
 export async function signUpWithEmail(email: string, password: string, fullName: string) {
-  if (!supabase) return { data: null, error: new Error('Supabase not configured') };
-  const res = await supabase.auth.signUp({
+  const client = getSupabaseClient();
+  if (!client) return { data: null, error: new Error('Supabase not configured') };
+  const res = await client.auth.signUp({
     email,
     password,
     options: {
@@ -26,7 +52,7 @@ export async function signUpWithEmail(email: string, password: string, fullName:
 
   if (res.data?.user) {
     try {
-      await supabase.from('profiles').upsert([
+      await client.from('profiles').upsert([
         {
           id: res.data.user.id,
           full_name: fullName,
@@ -47,27 +73,31 @@ export async function signUpWithEmail(email: string, password: string, fullName:
 }
 
 export async function signInWithEmail(email: string, password: string) {
-  if (!supabase) return { data: null, error: new Error('Supabase not configured') };
-  return supabase.auth.signInWithPassword({ email, password });
+  const client = getSupabaseClient();
+  if (!client) return { data: null, error: new Error('Supabase not configured') };
+  return client.auth.signInWithPassword({ email, password });
 }
 
 export async function signOutUser() {
-  if (!supabase) return { error: null };
-  return supabase.auth.signOut();
+  const client = getSupabaseClient();
+  if (!client) return { error: null };
+  return client.auth.signOut();
 }
 
 export async function getCurrentSession() {
-  if (!supabase) return null;
-  const { data } = await supabase.auth.getSession();
+  const client = getSupabaseClient();
+  if (!client) return null;
+  const { data } = await client.auth.getSession();
   return data.session;
 }
 
 // --- PROFILE SERVICES ---
 
 export async function fetchUserProfile(userId: string): Promise<UserProfile | null> {
-  if (!supabase) return null;
+  const client = getSupabaseClient();
+  if (!client) return null;
   try {
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from('profiles')
       .select('*')
       .eq('id', userId)
@@ -75,11 +105,12 @@ export async function fetchUserProfile(userId: string): Promise<UserProfile | nu
 
     if (error || !data) {
       // Fall back to Auth metadata
-      const { data: userData } = await supabase.auth.getUser();
+      const { data: userData } = await client.auth.getUser();
       if (userData?.user && userData.user.id === userId) {
         const u = userData.user;
         const name = u.user_metadata?.full_name || u.email?.split('@')[0] || 'User';
         return {
+          id: userId,
           name,
           email: u.email || '',
           university: 'KNUST',
@@ -92,13 +123,14 @@ export async function fetchUserProfile(userId: string): Promise<UserProfile | nu
           sessions: 0,
           communities: 1,
           streak: '1 day',
-          avatar: `https://i.pravatar.cc/120?u=${encodeURIComponent(u.email || name)}`,
+          avatar: u.user_metadata?.avatar_url || DEFAULT_AVATAR,
         };
       }
       return null;
     }
 
     return {
+      id: userId,
       name: data.full_name || 'User',
       email: data.email || '',
       university: data.university || 'KNUST',
@@ -111,7 +143,7 @@ export async function fetchUserProfile(userId: string): Promise<UserProfile | nu
       sessions: data.sessions_count ?? 0,
       communities: data.communities_count ?? 1,
       streak: data.streak || '1 day',
-      avatar: data.avatar_url || `https://i.pravatar.cc/120?u=${encodeURIComponent(data.email || data.full_name || 'user')}`,
+      avatar: data.avatar_url || DEFAULT_AVATAR,
     };
   } catch (err) {
     console.error('Error fetching profile:', err);
@@ -125,10 +157,12 @@ export async function updateUserProfile(userId: string, updates: Partial<{
   major: string;
   year: string;
   bio: string;
+  avatar_url: string;
   skills: string[];
 }>) {
-  if (!supabase) return { data: null, error: new Error('Supabase not configured') };
-  return supabase
+  const client = getSupabaseClient();
+  if (!client) return { data: null, error: new Error('Supabase not configured') };
+  return client
     .from('profiles')
     .update({
       ...updates,
@@ -140,9 +174,10 @@ export async function updateUserProfile(userId: string, updates: Partial<{
 // --- COMMUNITY SERVICES ---
 
 export async function getCommunities(): Promise<CommunityItem[]> {
-  if (!supabase) return [];
+  const client = getSupabaseClient();
+  if (!client) return [];
   try {
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from('communities')
       .select('*')
       .order('created_at', { ascending: false });
@@ -166,16 +201,35 @@ export async function getCommunities(): Promise<CommunityItem[]> {
   }
 }
 
+export async function getUserJoinedCommunities(userId: string): Promise<string[]> {
+  const client = getSupabaseClient();
+  if (!client) return [];
+  try {
+    const { data, error } = await client
+      .from('community_members')
+      .select('community_id')
+      .eq('user_id', userId);
+
+    if (error || !data) return [];
+    return data.map((item: any) => item.community_id);
+  } catch (err) {
+    console.error('Error fetching user joined communities:', err);
+    return [];
+  }
+}
+
 export async function joinCommunity(communityId: string, userId: string) {
-  if (!supabase) return { error: new Error('Supabase not configured') };
-  return supabase
+  const client = getSupabaseClient();
+  if (!client) return { error: new Error('Supabase not configured') };
+  return client
     .from('community_members')
     .insert([{ community_id: communityId, user_id: userId }]);
 }
 
 export async function leaveCommunity(communityId: string, userId: string) {
-  if (!supabase) return { error: new Error('Supabase not configured') };
-  return supabase
+  const client = getSupabaseClient();
+  if (!client) return { error: new Error('Supabase not configured') };
+  return client
     .from('community_members')
     .delete()
     .eq('community_id', communityId)
@@ -185,13 +239,14 @@ export async function leaveCommunity(communityId: string, userId: string) {
 // --- SESSION SERVICES ---
 
 export async function getSessions(): Promise<SessionItem[]> {
-  if (!supabase) return [];
+  const client = getSupabaseClient();
+  if (!client) return [];
   try {
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from('sessions')
       .select(`
         *,
-        tutor:profiles!sessions_tutor_id_fkey(full_name, avatar_url)
+        tutor:profiles(full_name, avatar_url)
       `)
       .order('scheduled_at', { ascending: true });
 
@@ -222,16 +277,24 @@ export async function createSession(sessionData: {
   duration_minutes: number;
   max_participants: number;
 }) {
-  if (!supabase) return { data: null, error: new Error('Supabase not configured') };
-  return supabase.from('sessions').insert([sessionData]);
+  const client = getSupabaseClient();
+  if (!client) return { data: null, error: new Error('Supabase not configured') };
+  return client.from('sessions').insert([sessionData]);
 }
 
 // --- MESSAGING & REALTIME SERVICES ---
 
-export async function getMessages(threadId: string): Promise<MessageItem[]> {
-  if (!supabase) return [];
+export async function getMessages(threadId: string, currentUserId?: string): Promise<MessageItem[]> {
+  const client = getSupabaseClient();
+  if (!client) return [];
   try {
-    const { data, error } = await supabase
+    let activeUserId = currentUserId;
+    if (!activeUserId) {
+      const { data: userData } = await client.auth.getUser();
+      activeUserId = userData?.user?.id;
+    }
+
+    const { data, error } = await client
       .from('messages')
       .select('*')
       .eq('thread_id', threadId)
@@ -241,7 +304,7 @@ export async function getMessages(threadId: string): Promise<MessageItem[]> {
 
     return data.map((msg: any) => ({
       id: msg.id,
-      sender: 'them',
+      sender: activeUserId && msg.sender_id === activeUserId ? 'me' : 'them',
       text: msg.content,
       time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     }));
@@ -252,19 +315,27 @@ export async function getMessages(threadId: string): Promise<MessageItem[]> {
 }
 
 export async function sendSupabaseMessage(threadId: string, text: string, senderId?: string) {
-  if (!supabase) return { data: null, error: new Error('Supabase not configured') };
-  return supabase.from('messages').insert([
-    { thread_id: threadId, content: text, sender_id: senderId || null, created_at: new Date().toISOString() }
+  const client = getSupabaseClient();
+  if (!client) return { data: null, error: new Error('Supabase not configured') };
+  let activeSenderId = senderId;
+  if (!activeSenderId) {
+    const { data: userData } = await client.auth.getUser();
+    activeSenderId = userData?.user?.id;
+  }
+  return client.from('messages').insert([
+    { thread_id: threadId, content: text, sender_id: activeSenderId || null, created_at: new Date().toISOString() }
   ]);
 }
 
 export function subscribeToThreadMessages(
   threadId: string,
-  onNewMessage: (msg: MessageItem) => void
+  onNewMessage: (msg: MessageItem) => void,
+  currentUserId?: string
 ) {
-  if (!supabase) return () => {};
+  const client = getSupabaseClient();
+  if (!client) return () => {};
 
-  const channel = supabase
+  const channel = client
     .channel(`public:messages:thread_id=eq.${threadId}`)
     .on(
       'postgres_changes',
@@ -274,11 +345,12 @@ export function subscribeToThreadMessages(
         table: 'messages',
         filter: `thread_id=eq.${threadId}`,
       },
-      (payload) => {
+      (payload: any) => {
         const newMsg = payload.new;
+        const isMe = Boolean(currentUserId && newMsg.sender_id === currentUserId);
         onNewMessage({
           id: newMsg.id || `msg-${Date.now()}`,
-          sender: 'them',
+          sender: isMe ? 'me' : 'them',
           text: newMsg.content || newMsg.body || '',
           time: new Date(newMsg.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         });
@@ -287,18 +359,204 @@ export function subscribeToThreadMessages(
     .subscribe();
 
   return () => {
-    supabase.removeChannel(channel);
+    client.removeChannel(channel);
   };
 }
 
-// --- MEETUP & COMMUNITY SERVICES ---
+export async function fetchAllProfiles(currentUserId?: string): Promise<UserProfile[]> {
+  const client = getSupabaseClient();
+  if (!client) return [];
+  try {
+    let query = client.from('profiles').select('*');
+    if (currentUserId) {
+      query = query.neq('id', currentUserId);
+    }
+    const { data, error } = await query;
+    if (error || !data) return [];
+    return data.map((d: any) => ({
+      id: d.id,
+      name: d.full_name || 'User',
+      email: d.email || '',
+      university: d.university || 'KNUST',
+      major: d.major || 'Computer Science',
+      year: d.year || '1st Year',
+      bio: d.bio || '',
+      skills: Array.isArray(d.skills) ? d.skills : [],
+      rating: d.rating ? String(d.rating) : '5.0',
+      points: d.points ?? 100,
+      sessions: d.sessions_count ?? 0,
+      communities: d.communities_count ?? 1,
+      streak: d.streak || '1 day',
+      avatar: d.avatar_url || DEFAULT_AVATAR,
+    }));
+  } catch (err) {
+    console.error('Error fetching registered profiles:', err);
+    return [];
+  }
+}
+
+export async function createChatThread(participantIds: string[], title?: string, isGroup: boolean = false) {
+  const client = getSupabaseClient();
+  if (!client) return { data: null, error: new Error('Supabase not configured') };
+  try {
+    const { data: thread, error: threadErr } = await client
+      .from('chat_threads')
+      .insert([{ title, is_group: isGroup }])
+      .select('*')
+      .single();
+
+    if (threadErr || !thread) return { data: null, error: threadErr };
+
+    const participants = participantIds.map((userId) => ({
+      thread_id: thread.id,
+      user_id: userId,
+    }));
+
+    const { error: partErr } = await client.from('chat_participants').insert(participants);
+    if (partErr) return { data: null, error: partErr };
+
+    return { data: thread, error: null };
+  } catch (err: any) {
+    return { data: null, error: err };
+  }
+}
+
+export async function getOrCreateDirectThread(currentUserId: string, recipientUser: UserProfile) {
+  const client = getSupabaseClient();
+  const recipientId = recipientUser.id;
+
+  if (!client || !recipientId) {
+    const fallbackId = `thread-${recipientUser.name.toLowerCase().replace(/\s+/g, '-')}`;
+    return {
+      id: fallbackId,
+      name: recipientUser.name,
+      preview: 'Tap to send a live message...',
+      time: 'Just now',
+      avatar: recipientUser.avatar,
+      online: true,
+    };
+  }
+
+  try {
+    // Check existing threads shared between currentUserId and recipientId
+    const { data: myThreads } = await client
+      .from('chat_participants')
+      .select('thread_id')
+      .eq('user_id', currentUserId);
+
+    if (myThreads && myThreads.length > 0) {
+      const myThreadIds = myThreads.map((t: any) => t.thread_id);
+      const { data: common } = await client
+        .from('chat_participants')
+        .select('thread_id')
+        .eq('user_id', recipientId)
+        .in('thread_id', myThreadIds);
+
+      if (common && common.length > 0) {
+        const threadId = common[0].thread_id;
+        return {
+          id: threadId,
+          name: recipientUser.name,
+          preview: 'Tap to view live messages...',
+          time: 'Active',
+          avatar: recipientUser.avatar,
+          online: true,
+        };
+      }
+    }
+
+    // Create new direct thread
+    const res = await createChatThread([currentUserId, recipientId], recipientUser.name, false);
+    if (res.data) {
+      return {
+        id: res.data.id,
+        name: recipientUser.name,
+        preview: 'New conversation started',
+        time: 'Just now',
+        avatar: recipientUser.avatar,
+        online: true,
+      };
+    }
+  } catch (err) {
+    console.error('Error resolving direct thread:', err);
+  }
+
+  const fallbackId = `thread-${recipientId}`;
+  return {
+    id: fallbackId,
+    name: recipientUser.name,
+    preview: 'Tap to send a live message...',
+    time: 'Just now',
+    avatar: recipientUser.avatar,
+    online: true,
+  };
+}
+
+export async function getUserThreads(userId: string): Promise<ThreadPreview[]> {
+  const client = getSupabaseClient();
+  if (!client || !userId) return [];
+  try {
+    const { data: parts, error } = await client
+      .from('chat_participants')
+      .select('thread_id, chat_threads(*)')
+      .eq('user_id', userId);
+
+    if (error || !parts) return [];
+
+    const threadPreviewsList: ThreadPreview[] = [];
+
+    for (const item of parts) {
+      const threadObj = item.chat_threads;
+      if (!threadObj) continue;
+
+      // Find other participant profile
+      const { data: otherParts } = await client
+        .from('chat_participants')
+        .select('user_id, profiles(*)')
+        .eq('thread_id', threadObj.id)
+        .neq('user_id', userId);
+
+      const otherUser = otherParts && otherParts.length > 0 ? (otherParts[0].profiles as any) : null;
+
+      // Fetch last message for thread preview
+      const { data: lastMsgs } = await client
+        .from('messages')
+        .select('*')
+        .eq('thread_id', threadObj.id)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      const lastMsg = lastMsgs && lastMsgs.length > 0 ? lastMsgs[0] : null;
+
+      threadPreviewsList.push({
+        id: threadObj.id,
+        name: otherUser?.full_name || threadObj.title || 'Chat',
+        preview: lastMsg?.content || 'No messages yet',
+        time: lastMsg?.created_at
+          ? new Date(lastMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : 'Now',
+        avatar: otherUser?.avatar_url || DEFAULT_AVATAR,
+        online: true,
+        isGroup: threadObj.is_group ?? false,
+      });
+    }
+
+    return threadPreviewsList;
+  } catch (err) {
+    console.error('Error fetching user threads:', err);
+    return [];
+  }
+}
+
+// --- MEETUP & RECORDINGS SERVICES ---
 
 export async function getMeetups(): Promise<InPersonMeetup[]> {
-  if (!supabase) return [];
+  const client = getSupabaseClient();
+  if (!client) return [];
   try {
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from('meetups')
-      .select('*')
+      .select('*, organizer:profiles(full_name, avatar_url)')
       .order('scheduled_at', { ascending: true });
 
     if (error || !data || data.length === 0) return [];
@@ -318,18 +576,37 @@ export async function getMeetups(): Promise<InPersonMeetup[]> {
   }
 }
 
+export async function getUserMeetupRSVPs(userId: string): Promise<string[]> {
+  const client = getSupabaseClient();
+  if (!client) return [];
+  try {
+    const { data, error } = await client
+      .from('meetup_rsvps')
+      .select('meetup_id')
+      .eq('user_id', userId);
+
+    if (error || !data) return [];
+    return data.map((item: any) => item.meetup_id);
+  } catch (err) {
+    console.error('Error fetching meetup RSVPs:', err);
+    return [];
+  }
+}
+
 export async function rsvpMeetupInSupabase(meetupId: string, userId: string, rsvped: boolean) {
-  if (!supabase) return { error: new Error('Supabase not configured') };
+  const client = getSupabaseClient();
+  if (!client) return { error: new Error('Supabase not configured') };
   if (rsvped) {
-    return supabase.from('meetup_rsvps').insert([{ meetup_id: meetupId, user_id: userId }]);
+    return client.from('meetup_rsvps').insert([{ meetup_id: meetupId, user_id: userId }]);
   } else {
-    return supabase.from('meetup_rsvps').delete().eq('meetup_id', meetupId).eq('user_id', userId);
+    return client.from('meetup_rsvps').delete().eq('meetup_id', meetupId).eq('user_id', userId);
   }
 }
 
 export async function createMeetupInSupabase(title: string, location: string, scheduledAt: string, organizerId?: string) {
-  if (!supabase) return { data: null, error: new Error('Supabase not configured') };
-  return supabase.from('meetups').insert([
+  const client = getSupabaseClient();
+  if (!client) return { data: null, error: new Error('Supabase not configured') };
+  return client.from('meetups').insert([
     {
       title,
       location,
@@ -340,8 +617,9 @@ export async function createMeetupInSupabase(title: string, location: string, sc
 }
 
 export async function createCommunityInSupabase(name: string, subject: string, description: string, creatorId?: string) {
-  if (!supabase) return { data: null, error: new Error('Supabase not configured') };
-  return supabase.from('communities').insert([
+  const client = getSupabaseClient();
+  if (!client) return { data: null, error: new Error('Supabase not configured') };
+  return client.from('communities').insert([
     {
       name,
       subject,
@@ -349,5 +627,35 @@ export async function createCommunityInSupabase(name: string, subject: string, d
       created_by: creatorId || null,
     },
   ]);
+}
+
+export async function getRecordings(): Promise<any[]> {
+  const client = getSupabaseClient();
+  if (!client) return [];
+  try {
+    const { data, error } = await client
+      .from('recordings')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error || !data) return [];
+    return data;
+  } catch (err) {
+    console.error('Error fetching recordings:', err);
+    return [];
+  }
+}
+
+export async function createRecordingInSupabase(recording: {
+  title: string;
+  tutor_name: string;
+  category: string;
+  duration: string;
+  thumbnail_url?: string;
+  video_url?: string;
+}) {
+  const client = getSupabaseClient();
+  if (!client) return { data: null, error: new Error('Supabase not configured') };
+  return client.from('recordings').insert([recording]);
 }
 

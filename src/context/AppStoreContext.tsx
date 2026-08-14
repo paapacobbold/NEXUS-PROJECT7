@@ -36,7 +36,7 @@ export type AppRoute =
 export type TabKey = 'home' | 'communities' | 'sessions' | 'chat' | 'profile';
 export type FilterKey = keyof typeof filterSections;
 export type FilterState = Record<FilterKey, string[]>;
-export type ThemeMode = 'light' | 'dark' | 'midnight';
+export type ThemeMode = 'system' | 'light' | 'dark' | 'midnight';
 
 export type AppStore = {
   theme: ThemeMode;

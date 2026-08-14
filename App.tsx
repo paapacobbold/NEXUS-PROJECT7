@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Animated, View } from 'react-native';
+import { Animated, useColorScheme, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { MainShell } from './src/components/UIComponents';
@@ -8,6 +8,7 @@ import { AppRoute, AppStore, AppStoreContext, FilterKey, FilterState, TabKey, Th
 import {
   communities as initialCommunities,
   currentUser,
+  DEFAULT_AVATAR,
   defaultNotificationPrefs,
   filterSections,
   sampleMeetups,
@@ -25,7 +26,7 @@ import { ChatListScreen, PrivateChatScreen } from './src/screens/ChatScreens';
 import { SessionsScreen, ScheduleSessionScreen, SessionLobbyScreen, CreateMeetupScreen } from './src/screens/SessionsScreens';
 import { LeaderboardScreen, RecordingsScreen, FiltersScreen } from './src/screens/SecondaryScreens';
 import { OnboardingScreen, SignupScreen, SigninScreen, SplashScreen, WelcomeScreen } from './src/screens/AuthScreens';
-import { nowTime, styles } from './src/styles/appStyles';
+import { getThemeColors, nowTime, styles } from './src/styles/appStyles';
 
 import { GlobalSearchModal } from './src/components/GlobalSearchModal';
 import { NotificationCenterModal } from './src/components/NotificationCenterModal';
@@ -80,21 +81,28 @@ const initialFilters: FilterState = {
 };
 
 export default function App() {
+  const systemColorScheme = useColorScheme();
   const [stack, setStack] = useState<AppRoute[]>(['splash']);
-  const [theme, setTheme] = useState<ThemeMode>('light');
+  const [theme, setTheme] = useState<ThemeMode>('system');
   const [showGlobalSearch, setShowGlobalSearch] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [profile, setProfile] = useState(currentUser);
   const [notificationPrefs, setNotificationPrefs] = useState(defaultNotificationPrefs);
   const [threads, setThreads] = useState(threadPreviews);
   const [messagesByThread, setMessagesByThread] = useState(threadMessages);
+  const [activeThreadId, setActiveThreadId] = useState<string>('');
   const [selectedFilters, setSelectedFilters] = useState(initialFilters);
   const [communitiesList, setCommunitiesList] = useState(initialCommunities);
   const [sessionsList, setSessionsList] = useState(initialUpcomingSessions);
   const [meetupsList, setMeetupsList] = useState(sampleMeetups);
 
+  const themeColors = useMemo(
+    () => getThemeColors(theme, systemColorScheme),
+    [theme, systemColorScheme]
+  );
+
   const currentRoute = stack[stack.length - 1];
-  const currentThreadId = currentRoute === 'private-chat' ? 'kai' : 'kai';
+  const currentThreadId = activeThreadId || (threads[0]?.id ?? 'default');
   const featuredCommunity = communitiesList[0] || initialCommunities[0];
 
   useEffect(() => {
@@ -123,7 +131,16 @@ export default function App() {
 
     async function initSupabaseData() {
       try {
-        const { supabase, getCommunities, getSessions, getMeetups, getCurrentSession, fetchUserProfile } = await import('./src/lib/supabase');
+        const {
+          supabase,
+          getCommunities,
+          getUserJoinedCommunities,
+          getSessions,
+          getMeetups,
+          getUserMeetupRSVPs,
+          getCurrentSession,
+          fetchUserProfile,
+        } = await import('./src/lib/supabase');
 
         if (!supabase) return;
 
@@ -141,13 +158,29 @@ export default function App() {
               ...prev,
               name: userName,
               email: userEmail,
-              avatar: `https://i.pravatar.cc/120?u=${encodeURIComponent(userEmail || userName)}`,
+              avatar: session.user.user_metadata?.avatar_url || DEFAULT_AVATAR,
             }));
+          }
+
+          // Hydrate user community memberships
+          const joinedIds = await getUserJoinedCommunities(session.user.id);
+          if (joinedIds && joinedIds.length > 0) {
+            setCommunitiesList((prev) =>
+              prev.map((c) => ({ ...c, joined: joinedIds.includes(c.id) }))
+            );
+          }
+
+          // Hydrate user meetup RSVPs
+          const rsvpIds = await getUserMeetupRSVPs(session.user.id);
+          if (rsvpIds && rsvpIds.length > 0) {
+            setMeetupsList((prev) =>
+              prev.map((m) => ({ ...m, rsvpStatus: rsvpIds.includes(m.id) }))
+            );
           }
         }
 
         // Listen for live Auth State changes
-        const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+        const { data: authListener } = supabase.auth.onAuthStateChange(async (event: any, session: any) => {
           if (session?.user) {
             const liveProfile = await fetchUserProfile(session.user.id);
             if (liveProfile) {
@@ -206,18 +239,45 @@ export default function App() {
     setStack((prev) => (prev.length > 1 ? prev.slice(0, prev.length - 1) : prev));
   const openTab = (tab: TabKey) => replace(`main-${tab}` as AppRoute);
 
+  const handleSetTheme = (newTheme: ThemeMode) => {
+    setTheme(newTheme);
+    saveThemeStorage(newTheme);
+  };
+
   const store = useMemo<AppStore>(
     () => ({
       theme,
-      setTheme,
+      setTheme: handleSetTheme,
       profile,
-      updateProfile: (patch) => setProfile((prev) => ({ ...prev, ...patch })),
+      updateProfile: (patch) => {
+        setProfile((prev) => {
+          const updated = { ...prev, ...patch };
+          saveProfileStorage(updated);
+          import('./src/lib/supabase').then(({ getCurrentSession, updateUserProfile }) => {
+            getCurrentSession().then((session) => {
+              if (session?.user) {
+                updateUserProfile(session.user.id, {
+                  full_name: updated.name,
+                  university: updated.university,
+                  major: updated.major,
+                  year: updated.year,
+                  bio: updated.bio,
+                  avatar_url: updated.avatar,
+                  skills: updated.skills,
+                });
+              }
+            });
+          });
+          return updated;
+        });
+      },
       notificationPrefs,
       toggleNotification: (key) =>
-        setNotificationPrefs((prev) => ({
-          ...prev,
-          [key]: !prev[key],
-        })),
+        setNotificationPrefs((prev) => {
+          const updated = { ...prev, [key]: !prev[key] };
+          saveNotificationPrefsStorage(updated);
+          return updated;
+        }),
       threads,
       messagesByThread,
       sendMessage: (threadId, text) => {
@@ -260,15 +320,32 @@ export default function App() {
       communitiesList,
       toggleJoinCommunity: (communityId) => {
         setCommunitiesList((prev) =>
-          prev.map((item) =>
-            item.id === communityId
-              ? {
-                  ...item,
-                  joined: !item.joined,
-                  members: item.joined ? item.members - 1 : item.members + 1,
-                }
-              : item,
-          ),
+          prev.map((item) => {
+            if (item.id === communityId) {
+              const nextJoined = !item.joined;
+              import('./src/lib/supabase')
+                .then(({ getCurrentSession, joinCommunity, leaveCommunity }) => {
+                  getCurrentSession()
+                    .then((session) => {
+                      if (session?.user) {
+                        if (nextJoined) {
+                          joinCommunity(communityId, session.user.id);
+                        } else {
+                          leaveCommunity(communityId, session.user.id);
+                        }
+                      }
+                    })
+                    .catch((err) => console.warn('Community sync warning:', err));
+                })
+                .catch((err) => console.warn('Supabase import warning:', err));
+              return {
+                ...item,
+                joined: nextJoined,
+                members: nextJoined ? item.members + 1 : Math.max(item.members - 1, 0),
+              };
+            }
+            return item;
+          }),
         );
       },
       addCommunity: (name, subject, description) => {
@@ -285,6 +362,15 @@ export default function App() {
           postsFeed: [],
         };
         setCommunitiesList((prev) => [newCommunity, ...prev]);
+        import('./src/lib/supabase')
+          .then(({ getCurrentSession, createCommunityInSupabase }) => {
+            getCurrentSession()
+              .then((session) => {
+                createCommunityInSupabase(name, subject, description, session?.user?.id);
+              })
+              .catch((err) => console.warn('Create community sync warning:', err));
+          })
+          .catch((err) => console.warn('Supabase import warning:', err));
       },
       sessionsList,
       addSession: (title, tag, time) => {
@@ -298,19 +384,50 @@ export default function App() {
           image: profile.avatar,
         };
         setSessionsList((prev) => [newSession, ...prev]);
+        import('./src/lib/supabase')
+          .then(({ getCurrentSession, createSession }) => {
+            getCurrentSession()
+              .then((session) => {
+                if (session?.user) {
+                  createSession({
+                    title,
+                    tutor_id: session.user.id,
+                    tag,
+                    scheduled_at: new Date().toISOString(),
+                    duration_minutes: 60,
+                    max_participants: 20,
+                  });
+                }
+              })
+              .catch((err) => console.warn('Create session sync warning:', err));
+          })
+          .catch((err) => console.warn('Supabase import warning:', err));
       },
       meetupsList,
       toggleRSVPMeetup: (meetupId) => {
         setMeetupsList((prev) =>
-          prev.map((m) =>
-            m.id === meetupId
-              ? {
-                  ...m,
-                  rsvpStatus: !m.rsvpStatus,
-                  rsvpCount: m.rsvpStatus ? m.rsvpCount - 1 : m.rsvpCount + 1,
-                }
-              : m,
-          ),
+          prev.map((m) => {
+            if (m.id === meetupId) {
+              const nextRSVP = !m.rsvpStatus;
+              import('./src/lib/supabase')
+                .then(({ getCurrentSession, rsvpMeetupInSupabase }) => {
+                  getCurrentSession()
+                    .then((session) => {
+                      if (session?.user) {
+                        rsvpMeetupInSupabase(meetupId, session.user.id, nextRSVP);
+                      }
+                    })
+                    .catch((err) => console.warn('RSVP sync warning:', err));
+                })
+                .catch((err) => console.warn('Supabase import warning:', err));
+              return {
+                ...m,
+                rsvpStatus: nextRSVP,
+                rsvpCount: nextRSVP ? m.rsvpCount + 1 : Math.max(m.rsvpCount - 1, 0),
+              };
+            }
+            return m;
+          }),
         );
       },
       addMeetup: (title, location, dateTime) => {
@@ -324,6 +441,15 @@ export default function App() {
           rsvpStatus: true,
         };
         setMeetupsList((prev) => [newMeetup, ...prev]);
+        import('./src/lib/supabase')
+          .then(({ getCurrentSession, createMeetupInSupabase }) => {
+            getCurrentSession()
+              .then((session) => {
+                createMeetupInSupabase(title, location, new Date().toISOString(), session?.user?.id);
+              })
+              .catch((err) => console.warn('Create meetup sync warning:', err));
+          })
+          .catch((err) => console.warn('Supabase import warning:', err));
       },
     }),
     [profile, notificationPrefs, threads, messagesByThread, selectedFilters, communitiesList, sessionsList, meetupsList, theme],
@@ -402,7 +528,16 @@ export default function App() {
       case 'main-chat':
         return (
           <MainShell activeTab="chat" onTabChange={openTab}>
-            <ChatListScreen onOpenThread={() => push('private-chat')} />
+            <ChatListScreen
+              onOpenThread={(id) => {
+                if (id) setActiveThreadId(id);
+                push('private-chat');
+              }}
+              onSelectThread={(id) => {
+                setActiveThreadId(id);
+                push('private-chat');
+              }}
+            />
           </MainShell>
         );
       case 'main-profile':
@@ -463,8 +598,8 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <AppStoreContext.Provider value={store}>
-        <StatusBar style="light" />
-        <View style={styles.appShell}>
+        <StatusBar style={themeColors.statusBarStyle} />
+        <View style={[styles.appShell, { backgroundColor: themeColors.bg }]}>
           <ScreenTransitionContainer routeKey={currentRoute}>
             {renderRoute()}
           </ScreenTransitionContainer>

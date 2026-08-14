@@ -44,7 +44,7 @@ function TestConsumerComponent() {
 }
 
 function TestStoreProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<'light' | 'dark' | 'midnight'>('light');
+  const [theme, setTheme] = useState<'system' | 'light' | 'dark' | 'midnight'>('light');
   const [profile, setProfile] = useState(currentUser);
   const [communitiesList, setCommunitiesList] = useState(communities);
   const [sessionsList, setSessionsList] = useState(upcomingSessions);

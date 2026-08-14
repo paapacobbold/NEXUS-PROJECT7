@@ -14,8 +14,10 @@ import {
   StatCard,
 } from '../components/UIComponents';
 import { useAppStore } from '../context/AppStoreContext';
-import { brand, liveSession } from '../data/mockData';
+import { brand } from '../data/mockData';
 import { styles } from '../styles/appStyles';
+
+const hitSlop = { top: 8, bottom: 8, left: 8, right: 8 };
 
 function SectionHeading({
   title,
@@ -30,7 +32,7 @@ function SectionHeading({
     <View style={styles.sectionHeadingRow}>
       <Text style={styles.sectionTitle}>{title}</Text>
       {actionLabel ? (
-        <Pressable onPress={onAction}>
+        <Pressable hitSlop={hitSlop} onPress={onAction} style={({ pressed }) => [pressed && { opacity: 0.7 }]}>
           <Text style={styles.sectionLink}>{actionLabel}</Text>
         </Pressable>
       ) : null}
@@ -82,7 +84,7 @@ export function HomeScreen({
         if (t.id === taskId) {
           const nextDone = !t.done;
           if (nextDone) {
-            updateProfile({ points: t.points });
+            updateProfile({ points: (profile.points || 0) + t.points });
           }
           return { ...t, done: nextDone };
         }
@@ -93,17 +95,30 @@ export function HomeScreen({
 
   const handleLogStudyTime = () => {
     setLoggedHours((prev) => Math.min(6.0, prev + 0.5));
-    updateProfile({ points: 15 });
+    updateProfile({ points: (profile.points || 0) + 15 });
   };
 
   const completedTasksCount = dailyTasks.filter((t) => t.done).length;
 
+  // Derive active live session dynamically from account & store
+  const activeLiveSession = sessionsList.find((s) => s.isLive) || {
+    id: 'my-live-room',
+    title: `${profile.name}'s Virtual Study Room`,
+    tutor: profile.name,
+    participants: '0 / 20 participants',
+    image: profile.avatar,
+    isLive: true,
+  };
+
+  const joinedCommunities = communitiesList.filter((c) => c.joined);
+
   return (
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.screenContent}>
+      {/* Account Greeting Header */}
       <View style={styles.topRow}>
         <View>
           <Text style={styles.mutedCopy}>Good afternoon,</Text>
-          <Text style={styles.titleLarge}>{profile.name.split(' ')[0]} 👋</Text>
+          <Text style={styles.titleLarge}>{profile.name.split(' ')[0] || 'Learner'} 👋</Text>
         </View>
         <View style={styles.topActionRow}>
           <IconButton icon="search" onPress={onOpenSearch || onOpenFilters || (() => {})} />
@@ -112,18 +127,19 @@ export function HomeScreen({
         </View>
       </View>
 
+      {/* Account Activity Stats Row */}
       <View style={styles.statsRow}>
-        <StatCard label="Sessions" value={String(profile.sessions)} />
-        <StatCard label="Points" value={String(profile.points)} accent="#E07038" />
-        <StatCard label="Streak" value={profile.streak} accent="#59B980" />
+        <StatCard label="Sessions" value={String(profile.sessions || 0)} />
+        <StatCard label="Points" value={String(profile.points || 0)} accent="#E07038" />
+        <StatCard label="Streak" value={profile.streak || '1 day'} accent="#59B980" />
       </View>
 
-      {/* 7-Day Study Streak Calendar & Goal Tracker */}
+      {/* Account 7-Day Study Streak Calendar */}
       <View style={styles.streakCard}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Ionicons name="flame" size={22} color="#E07038" />
-            <Text style={{ fontSize: 15, fontWeight: '800', color: brand.text }}>🔥 5-Day Active Streak</Text>
+            <Text style={{ fontSize: 15, fontWeight: '800', color: brand.text }}>🔥 {profile.streak || '5-Day Active Streak'}</Text>
           </View>
           <Pill label={`${loggedHours.toFixed(1)} / 3.0 Hrs Today`} compact tint="#EBF7EE" textColor="#2F8B4E" />
         </View>
@@ -143,19 +159,24 @@ export function HomeScreen({
         </View>
 
         {/* Log Study Time Action */}
-        <Pressable onPress={handleLogStudyTime} style={{ alignSelf: 'flex-end', marginTop: 4 }}>
+        <Pressable
+          hitSlop={hitSlop}
+          onPress={handleLogStudyTime}
+          style={({ pressed }) => [{ alignSelf: 'flex-end', marginTop: 4 }, pressed && { opacity: 0.7, transform: [{ scale: 0.96 }] }]}
+        >
           <Text style={{ fontSize: 12, fontWeight: '800', color: brand.primary }}>+ Log 30 Min Study (+15 XP)</Text>
         </Pressable>
       </View>
 
-      {/* Daily Study Goals Checklist */}
+      {/* Account Daily Goals Checklist */}
       <View style={{ marginBottom: 12 }}>
         <SectionHeading title={`Daily Study Goals (${completedTasksCount}/${dailyTasks.length})`} />
         {dailyTasks.map((task) => (
           <Pressable
             key={task.id}
+            hitSlop={hitSlop}
             onPress={() => handleToggleTask(task.id)}
-            style={styles.goalTaskCard}
+            style={({ pressed }) => [styles.goalTaskCard, pressed && { opacity: 0.8, transform: [{ scale: 0.98 }] }]}
           >
             <View style={styles.goalTaskRow}>
               <Ionicons
@@ -182,7 +203,15 @@ export function HomeScreen({
 
       {/* Gamification & Recorded Quick Links */}
       <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
-        <Pressable onPress={onOpenLeaderboard} style={[styles.flexFill, { backgroundColor: '#FFF4EB', padding: 12, borderRadius: 16, borderWidth: 1, borderColor: '#FFE4D1' }]}>
+        <Pressable
+          hitSlop={hitSlop}
+          onPress={onOpenLeaderboard}
+          style={({ pressed }) => [
+            styles.flexFill,
+            { backgroundColor: '#FFF4EB', padding: 12, borderRadius: 16, borderWidth: 1, borderColor: '#FFE4D1' },
+            pressed && { opacity: 0.75, transform: [{ scale: 0.96 }] },
+          ]}
+        >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Ionicons name="trophy" size={16} color="#E07038" />
             <Text style={{ fontSize: 13, fontWeight: '700', color: '#B16A0E' }}>Leaderboard</Text>
@@ -190,7 +219,15 @@ export function HomeScreen({
           <Text style={{ fontSize: 11, color: brand.muted, marginTop: 2 }}>Rankings & Rewards</Text>
         </Pressable>
 
-        <Pressable onPress={onOpenRecordings} style={[styles.flexFill, { backgroundColor: '#EEF0FD', padding: 12, borderRadius: 16, borderWidth: 1, borderColor: '#D9DCFA' }]}>
+        <Pressable
+          hitSlop={hitSlop}
+          onPress={onOpenRecordings}
+          style={({ pressed }) => [
+            styles.flexFill,
+            { backgroundColor: '#EEF0FD', padding: 12, borderRadius: 16, borderWidth: 1, borderColor: '#D9DCFA' },
+            pressed && { opacity: 0.75, transform: [{ scale: 0.96 }] },
+          ]}
+        >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Ionicons name="videocam" size={16} color={brand.primary} />
             <Text style={{ fontSize: 13, fontWeight: '700', color: brand.primary }}>Recordings</Text>
@@ -199,33 +236,53 @@ export function HomeScreen({
         </Pressable>
       </View>
 
-      <Pressable onPress={onOpenLiveSession} style={styles.liveCard}>
+      {/* Dynamic Account Active Live Session Card */}
+      <Pressable
+        hitSlop={hitSlop}
+        onPress={onOpenLiveSession}
+        style={({ pressed }) => [styles.liveCard, pressed && { opacity: 0.88, transform: [{ scale: 0.98 }] }]}
+      >
         <View style={styles.liveBadge}>
           <View style={styles.liveDot} />
           <Text style={styles.liveBadgeText}>LIVE NOW</Text>
         </View>
-        <Text style={styles.liveTitle}>{liveSession.title}</Text>
+        <Text style={styles.liveTitle}>{activeLiveSession.title}</Text>
         <Text style={styles.liveMeta}>
-          with {liveSession.tutor} · {liveSession.participants}
+          Host: {activeLiveSession.tutor} · {activeLiveSession.participants}
         </Text>
         <View style={styles.inlineButton}>
           <Ionicons name="play" size={14} color="#fff" />
-          <Text style={styles.inlineButtonText}>Join Session</Text>
+          <Text style={styles.inlineButtonText}>Enter Virtual Lobby</Text>
         </View>
       </Pressable>
 
-      <SectionHeading title="Upcoming Sessions" actionLabel="See all" />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalList}>
-        {sessionsList.map((session) => (
-          <View key={session.id} style={styles.sessionCard}>
-            <Avatar source={session.image} size={34} />
-            <Text style={styles.sessionTitle}>{session.title}</Text>
-            <Text style={styles.sessionTime}>{session.time}</Text>
-            <Text style={styles.sessionParticipants}>{session.participants}</Text>
-          </View>
-        ))}
-      </ScrollView>
+      {/* Dynamic Scheduled Live Sessions */}
+      <SectionHeading title="Scheduled Live Sessions" actionLabel="See all" onAction={onOpenLiveSession} />
+      {sessionsList.length === 0 ? (
+        <View style={{ backgroundColor: '#FFFFFF', padding: 16, borderRadius: 14, borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 12 }}>
+          <Text style={{ fontSize: 13, color: brand.muted, textAlign: 'center' }}>
+            No upcoming live sessions scheduled yet. Tap "+ Schedule Live" in Sessions to create one!
+          </Text>
+        </View>
+      ) : (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalList}>
+          {sessionsList.map((session) => (
+            <Pressable
+              key={session.id}
+              hitSlop={hitSlop}
+              onPress={onOpenLiveSession}
+              style={({ pressed }) => [styles.sessionCard, pressed && { opacity: 0.8, transform: [{ scale: 0.96 }] }]}
+            >
+              <Avatar source={session.image} size={34} />
+              <Text style={styles.sessionTitle}>{session.title}</Text>
+              <Text style={styles.sessionTime}>{session.time}</Text>
+              <Text style={styles.sessionParticipants}>{session.participants}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
 
+      {/* Account Campus Meetups */}
       <SectionHeading title="In-Person Campus Meetups" actionLabel="RSVP" />
       {meetupsList.map((meetup) => (
         <View key={meetup.id} style={[styles.communityRowCard, { flexDirection: 'column', alignItems: 'flex-start', padding: 14, gap: 6 }]}>
@@ -238,8 +295,12 @@ export function HomeScreen({
           </View>
           <Text style={styles.mutedCopySmall}>📍 {meetup.location} · {meetup.dateTime}</Text>
           <Pressable
+            hitSlop={hitSlop}
             onPress={() => toggleRSVPMeetup(meetup.id)}
-            style={{ marginTop: 6, alignSelf: 'flex-end', backgroundColor: meetup.rsvpStatus ? '#D9F4DE' : brand.primary, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 12 }}
+            style={({ pressed }) => [
+              { marginTop: 6, alignSelf: 'flex-end', backgroundColor: meetup.rsvpStatus ? '#D9F4DE' : brand.primary, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 12 },
+              pressed && { opacity: 0.75, transform: [{ scale: 0.95 }] },
+            ]}
           >
             <Text style={{ fontSize: 12, fontWeight: '700', color: meetup.rsvpStatus ? '#2F8B4E' : '#fff' }}>
               {meetup.rsvpStatus ? '✓ Going' : '+ RSVP (+50 Pts)'}
@@ -248,17 +309,31 @@ export function HomeScreen({
         </View>
       ))}
 
-      <SectionHeading title="My Communities" actionLabel="See all" />
-      {communitiesList.slice(0, 3).map((community) => (
-        <Pressable key={community.id} onPress={onOpenCommunity} style={styles.communityRowCard}>
-          <Image source={{ uri: community.image }} style={styles.communityThumb} />
-          <View style={styles.flexFill}>
-            <Text style={styles.communityName}>{community.name}</Text>
-            <Text style={styles.mutedCopySmall}>{community.members} members · {community.subject}</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={brand.muted} />
-        </Pressable>
-      ))}
+      {/* Account Joined Communities */}
+      <SectionHeading title="My Communities" actionLabel="See all" onAction={onOpenCommunity} />
+      {joinedCommunities.length === 0 ? (
+        <View style={{ backgroundColor: '#FFFFFF', padding: 16, borderRadius: 14, borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 16 }}>
+          <Text style={{ fontSize: 13, color: brand.muted, textAlign: 'center' }}>
+            You haven't joined any communities yet. Discover groups in the Communities tab!
+          </Text>
+        </View>
+      ) : (
+        joinedCommunities.slice(0, 3).map((community) => (
+          <Pressable
+            key={community.id}
+            hitSlop={hitSlop}
+            onPress={onOpenCommunity}
+            style={({ pressed }) => [styles.communityRowCard, pressed && { opacity: 0.8, transform: [{ scale: 0.98 }] }]}
+          >
+            <Image source={{ uri: community.image }} style={styles.communityThumb} />
+            <View style={styles.flexFill}>
+              <Text style={styles.communityName}>{community.name}</Text>
+              <Text style={styles.mutedCopySmall}>{community.members} members · {community.subject}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={brand.muted} />
+          </Pressable>
+        ))
+      )}
     </ScrollView>
   );
 }

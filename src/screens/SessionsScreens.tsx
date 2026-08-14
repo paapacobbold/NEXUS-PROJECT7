@@ -1,14 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  FlatList,
   Image,
   ImageBackground,
   Modal,
   Pressable,
   ScrollView,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,7 +25,8 @@ import {
   PrimarySmallButton,
 } from '../components/UIComponents';
 import { useAppStore } from '../context/AppStoreContext';
-import { brand, InPersonMeetup, liveSession } from '../data/mockData';
+import { brand, DEFAULT_AVATAR, InPersonMeetup, liveSession, UserProfile } from '../data/mockData';
+import { fetchAllProfiles, getMessages, sendSupabaseMessage, subscribeToThreadMessages } from '../lib/supabase';
 import { styles } from '../styles/appStyles';
 
 export function SessionsScreen({
@@ -229,8 +232,75 @@ export function SessionLobbyScreen({ onLeave }: { onLeave: () => void }) {
   const [permission, requestPermission] = useCameraPermissions();
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOn, setIsCameraOn] = useState(true);
+  const [cameraFacing, setCameraFacing] = useState<'front' | 'back'>('front');
   const [isHandRaised, setIsHandRaised] = useState(false);
+  const [viewMode, setViewMode] = useState<'speaker' | 'gallery' | 'screenshare'>('speaker');
   const [showParticipants, setShowParticipants] = useState(false);
+  const [showInMeetingChat, setShowInMeetingChat] = useState(false);
+  const [showReactionsBar, setShowReactionsBar] = useState(false);
+  const [searchRoster, setSearchRoster] = useState('');
+  const [isMutedAll, setIsMutedAll] = useState(false);
+  const [floatingEmojis, setFloatingEmojis] = useState<{ id: string; emoji: string; left: number }[]>([]);
+  const [draftChat, setDraftChat] = useState('');
+  const [chatMessages, setChatMessages] = useState<{ id: string; sender: string; text: string; time: string }[]>([]);
+  const [registeredPeers, setRegisteredPeers] = useState<UserProfile[]>([]);
+
+  const sessionThreadId = 'live-session-room';
+
+  useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+
+    async function initMeetingServices() {
+      const activeUserId = profile?.id || profile?.name || 'user-me';
+
+      // 1. Fetch live in-meeting chat history from Supabase
+      const history = await getMessages(sessionThreadId, activeUserId);
+      if (history && history.length > 0) {
+        setChatMessages(
+          history.map((m) => ({
+            id: m.id,
+            sender: m.sender === 'me' ? profile?.name || 'You' : 'Peer Learner',
+            text: m.text,
+            time: m.time,
+          }))
+        );
+      }
+
+      // 2. Subscribe to real-time WebSocket chat updates
+      unsubscribe = subscribeToThreadMessages(
+        sessionThreadId,
+        (newMsg) => {
+          setChatMessages((prev) => {
+            if (prev.some((m) => m.id === newMsg.id || (m.text === newMsg.text && m.sender === (profile?.name || 'You')))) {
+              return prev;
+            }
+            return [
+              ...prev,
+              {
+                id: newMsg.id,
+                sender: newMsg.sender === 'me' ? profile?.name || 'You' : 'Peer Learner',
+                text: newMsg.text,
+                time: newMsg.time,
+              },
+            ];
+          });
+        },
+        activeUserId
+      );
+
+      // 3. Fetch live registered profiles for Zoom roster & video grid
+      const peers = await fetchAllProfiles(profile?.id);
+      if (peers) {
+        setRegisteredPeers(peers);
+      }
+    }
+
+    initMeetingServices();
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [profile?.id, profile?.name]);
 
   const handleToggleCamera = async () => {
     if (!isCameraOn && !permission?.granted) {
@@ -240,134 +310,727 @@ export function SessionLobbyScreen({ onLeave }: { onLeave: () => void }) {
     setIsCameraOn((prev) => !prev);
   };
 
-  const activeParticipants = [
-    { name: liveSession.tutor, role: 'Lead Peer Tutor', avatar: liveSession.image, isMuted: false },
-    { name: profile.name + ' (You)', role: 'Student Learner', avatar: profile.avatar, isMuted },
-    { name: 'Kofi Mensah', role: 'Student Learner', avatar: 'https://i.pravatar.cc/120?img=12', isMuted: true },
-    { name: 'Ama Owusu', role: 'Student Learner', avatar: 'https://i.pravatar.cc/120?img=23', isMuted: false },
-    { name: 'Kwame Asante', role: 'Student Learner', avatar: 'https://i.pravatar.cc/120?img=31', isMuted: true },
+  const handleFlipCamera = () => {
+    setCameraFacing((prev) => (prev === 'front' ? 'back' : 'front'));
+  };
+
+  const triggerReaction = (emoji: string) => {
+    const id = `emoji-${Date.now()}-${Math.random()}`;
+    const left = Math.floor(Math.random() * 60) + 20; // 20% to 80% horizontal offset
+    setFloatingEmojis((prev) => [...prev, { id, emoji, left }]);
+
+    setTimeout(() => {
+      setFloatingEmojis((prev) => prev.filter((e) => e.id !== id));
+    }, 2400);
+  };
+
+  const handleSendInMeetingChat = async () => {
+    if (!draftChat.trim()) return;
+    const textToSend = draftChat.trim();
+    setDraftChat('');
+
+    const newMsg = {
+      id: `chat-${Date.now()}`,
+      sender: profile?.name || 'You',
+      text: textToSend,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+    setChatMessages((prev) => [...prev, newMsg]);
+
+    try {
+      await sendSupabaseMessage(sessionThreadId, textToSend, profile?.id);
+    } catch (err) {
+      console.warn('In-meeting chat send error:', err);
+    }
+  };
+
+  const activeHostName = liveSession.tutor && liveSession.tutor !== 'Priya Sharma' ? liveSession.tutor : (profile?.name || 'Lead Peer Tutor');
+  const activeHostAvatar = profile?.avatar || DEFAULT_AVATAR;
+  const activeSessionTitle = liveSession.title || (profile?.name ? profile.name + "'s Live Study Session" : 'Live Peer Session');
+
+  // Build dynamic participants list from active profile and registered Supabase members
+  const participantsList = [
+    {
+      id: 'host',
+      name: activeHostName,
+      role: 'Host · Lead Tutor',
+      avatar: activeHostAvatar,
+      isMuted: false,
+      isCameraOn: true,
+      isHandRaised: false,
+    },
+    {
+      id: profile?.id || 'self',
+      name: (profile?.name || 'You') + ' (You)',
+      role: 'Co-Host',
+      avatar: profile?.avatar || DEFAULT_AVATAR,
+      isMuted,
+      isCameraOn,
+      isHandRaised,
+    },
+    ...registeredPeers.map((p, idx) => ({
+      id: p.id || `peer-${idx}`,
+      name: p.name,
+      role: p.major ? `${p.major} Student` : 'Peer Learner',
+      avatar: p.avatar || DEFAULT_AVATAR,
+      isMuted: isMutedAll ? true : idx % 2 === 0,
+      isCameraOn: idx % 3 !== 0,
+      isHandRaised: idx === 1,
+    })),
   ];
 
+  const filteredRoster = participantsList.filter((p) =>
+    p.name.toLowerCase().includes(searchRoster.toLowerCase())
+  );
+
   return (
-    <SafeAreaView style={styles.darkScreen}>
-      <ImageBackground source={{ uri: liveSession.image }} style={styles.sessionLobbyBg} imageStyle={styles.coverImage}>
-        <LinearGradient colors={['rgba(7,9,24,0.4)', 'rgba(7,9,24,0.92)']} style={styles.flexFill}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingTop: 14 }}>
-            <View style={styles.liveBadgeOutline}>
-              <View style={styles.liveDot} />
-              <Text style={styles.liveBadgeText}>LIVE SESSION</Text>
-            </View>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#0B0F19' }}>
+      {/* Zoom Top Control Header */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingHorizontal: 16,
+          paddingVertical: 10,
+          backgroundColor: '#111827',
+          borderBottomWidth: 1,
+          borderBottomColor: '#1F2937',
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' }} />
+          <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: '800' }}>● REC 00:42:15</Text>
+          <View style={{ width: 1, height: 12, backgroundColor: '#374151', marginHorizontal: 4 }} />
+          <Ionicons name="shield-checkmark" size={14} color="#10B981" />
+          <Text style={{ color: '#9CA3AF', fontSize: 11 }}>Zoom Encrypted</Text>
+        </View>
 
-            {isHandRaised ? (
-              <View style={styles.handRaisedBadge}>
-                <Text style={styles.handRaisedText}>✋ Hand Raised</Text>
-              </View>
-            ) : null}
-          </View>
-
-          <Pressable onPress={() => setShowParticipants(true)} style={styles.sessionLobbyAttendees}>
-            {activeParticipants.slice(0, 3).map((p) => (
-              <Image key={p.name} source={{ uri: p.avatar }} style={styles.lobbyAvatar} />
-            ))}
-            <Pill label="+22 more" compact tint="rgba(255,255,255,0.2)" textColor="#fff" />
+        {/* View Mode Switcher */}
+        <View style={{ flexDirection: 'row', backgroundColor: '#1F2937', borderRadius: 8, padding: 2 }}>
+          <Pressable
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            onPress={() => setViewMode('speaker')}
+            style={({ pressed }) => [
+              {
+                paddingHorizontal: 10,
+                paddingVertical: 4,
+                borderRadius: 6,
+                backgroundColor: viewMode === 'speaker' ? '#3B82F6' : 'transparent',
+              },
+              pressed && { opacity: 0.8, transform: [{ scale: 0.94 }] },
+            ]}
+          >
+            <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '600' }}>Speaker</Text>
           </Pressable>
+          <Pressable
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            onPress={() => setViewMode('gallery')}
+            style={({ pressed }) => [
+              {
+                paddingHorizontal: 10,
+                paddingVertical: 4,
+                borderRadius: 6,
+                backgroundColor: viewMode === 'gallery' ? '#3B82F6' : 'transparent',
+              },
+              pressed && { opacity: 0.8, transform: [{ scale: 0.94 }] },
+            ]}
+          >
+            <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '600' }}>Gallery</Text>
+          </Pressable>
+          <Pressable
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            onPress={() => setViewMode('screenshare')}
+            style={({ pressed }) => [
+              {
+                paddingHorizontal: 10,
+                paddingVertical: 4,
+                borderRadius: 6,
+                backgroundColor: viewMode === 'screenshare' ? '#3B82F6' : 'transparent',
+              },
+              pressed && { opacity: 0.8, transform: [{ scale: 0.94 }] },
+            ]}
+          >
+            <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '600' }}>Share</Text>
+          </Pressable>
+        </View>
+      </View>
 
-          <View style={styles.sessionLobbyCenter}>
-            <Text style={styles.lobbyTitle}>{liveSession.title}</Text>
-            <Text style={styles.lobbyMeta}>Lead Tutor: {liveSession.tutor} · 25 participants</Text>
+      {/* Main Video Meeting Stage */}
+      <View style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+        {/* Animated Floating Emoji Reactions Layer */}
+        {floatingEmojis.map((item) => (
+          <View
+            key={item.id}
+            style={{
+              position: 'absolute',
+              bottom: 120,
+              left: `${item.left}%`,
+              zIndex: 99,
+              backgroundColor: 'rgba(0,0,0,0.6)',
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 20,
+            }}
+          >
+            <Text style={{ fontSize: 28 }}>{item.emoji}</Text>
           </View>
+        ))}
 
-          <View style={styles.cameraPreviewWrap}>
-            {isCameraOn && permission?.granted ? (
-              <CameraView facing="front" style={styles.cameraPreviewImage} />
-            ) : isCameraOn ? (
-              <Image source={{ uri: profile.avatar }} style={styles.cameraPreviewImage} />
-            ) : (
-              <View style={styles.cameraOffOverlay}>
-                <Ionicons name="videocam-off" size={24} color="rgba(255,255,255,0.5)" />
-                <Text style={styles.cameraOffText}>Camera Off</Text>
-              </View>
-            )}
-          </View>
+        {viewMode === 'speaker' ? (
+          /* SPEAKER VIEW */
+          <ImageBackground source={{ uri: activeHostAvatar }} style={{ flex: 1, justifyContent: 'space-between' }}>
+            <LinearGradient colors={['rgba(11,15,25,0.3)', 'rgba(11,15,25,0.85)']} style={{ flex: 1, padding: 16 }}>
+              {/* Speaker Header Info */}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View style={{ backgroundColor: 'rgba(0,0,0,0.65)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}>
+                  <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 14 }}>{activeSessionTitle}</Text>
+                  <Text style={{ color: '#9CA3AF', fontSize: 11 }}>Speaker: {activeHostName}</Text>
+                </View>
 
-          <View style={styles.sessionControls}>
-            <View style={styles.controlItem}>
-              <Pressable
-                onPress={() => setIsMuted((prev) => !prev)}
-                style={[styles.controlCircle, isMuted ? { backgroundColor: '#E45A4F' } : styles.controlCircleActive]}
-              >
-                <Ionicons name={isMuted ? 'mic-off' : 'mic'} size={20} color="#fff" />
-              </Pressable>
-              <Text style={styles.controlText}>{isMuted ? 'Muted' : 'Unmute'}</Text>
-            </View>
-
-            <View style={styles.controlItem}>
-              <Pressable
-                onPress={handleToggleCamera}
-                style={[styles.controlCircle, isCameraOn ? styles.controlCircleActive : undefined]}
-              >
-                <Ionicons name={isCameraOn ? 'videocam' : 'videocam-off'} size={20} color="#fff" />
-              </Pressable>
-              <Text style={styles.controlText}>{isCameraOn ? 'Camera' : 'Cam Off'}</Text>
-            </View>
-
-            <View style={styles.controlItem}>
-              <Pressable
-                onPress={() => setIsHandRaised((prev) => !prev)}
-                style={[styles.controlCircle, isHandRaised ? styles.controlCircleHand : undefined]}
-              >
-                <Ionicons name="hand-left" size={20} color="#fff" />
-              </Pressable>
-              <Text style={styles.controlText}>{isHandRaised ? 'Lower' : 'Raise'}</Text>
-            </View>
-
-            <View style={styles.controlItem}>
-              <Pressable onPress={() => setShowParticipants(true)} style={styles.controlCircle}>
-                <Ionicons name="people" size={20} color="#fff" />
-              </Pressable>
-              <Text style={styles.controlText}>Peers (25)</Text>
-            </View>
-
-            <View style={styles.controlItem}>
-              <Pressable onPress={onLeave} style={[styles.controlCircle, styles.leaveCircle]}>
-                <Ionicons name="call" size={20} color="#fff" />
-              </Pressable>
-              <Text style={styles.controlText}>Leave</Text>
-            </View>
-          </View>
-        </LinearGradient>
-      </ImageBackground>
-
-      <Modal visible={showParticipants} transparent animationType="slide">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Session Attendees (25)</Text>
-              <Pressable onPress={() => setShowParticipants(false)}>
-                <Ionicons name="close-circle" size={26} color={brand.muted} />
-              </Pressable>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {activeParticipants.map((p) => (
-                <View key={p.name} style={styles.participantRow}>
-                  <Avatar source={p.avatar} size={40} />
-                  <View style={styles.flexFill}>
-                    <Text style={styles.communityName}>{p.name}</Text>
-                    <Text style={styles.participantRole}>{p.role}</Text>
+                {isHandRaised ? (
+                  <View style={{ backgroundColor: '#F97316', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 12 }}>✋ Hand Raised</Text>
                   </View>
+                ) : null}
+              </View>
+
+              {/* Active Speaker Spotlight Indicator */}
+              <View
+                style={{
+                  marginTop: 'auto',
+                  alignSelf: 'flex-start',
+                  backgroundColor: 'rgba(16,185,129,0.2)',
+                  borderColor: '#10B981',
+                  borderWidth: 1.5,
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: 8,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <Ionicons name="mic" size={14} color="#10B981" />
+                <Text style={{ color: '#10B981', fontWeight: '700', fontSize: 12 }}>Active Speaker: {activeHostName}</Text>
+              </View>
+            </LinearGradient>
+
+            {/* Local PiP User Camera View */}
+            <View
+              style={{
+                position: 'absolute',
+                bottom: 20,
+                right: 16,
+                width: 120,
+                height: 160,
+                borderRadius: 12,
+                overflow: 'hidden',
+                borderWidth: 2,
+                borderColor: '#3B82F6',
+                backgroundColor: '#1F2937',
+              }}
+            >
+              {isCameraOn && permission?.granted ? (
+                <CameraView facing={cameraFacing} style={{ width: '100%', height: '100%' }} />
+              ) : isCameraOn ? (
+                <Image source={{ uri: profile.avatar }} style={{ width: '100%', height: '100%' }} />
+              ) : (
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#111827' }}>
+                  <Ionicons name="videocam-off" size={24} color="#6B7280" />
+                  <Text style={{ color: '#9CA3AF', fontSize: 10, marginTop: 4 }}>Camera Off</Text>
+                </View>
+              )}
+
+              <Pressable
+                onPress={handleFlipCamera}
+                style={{
+                  position: 'absolute',
+                  top: 6,
+                  right: 6,
+                  backgroundColor: 'rgba(0,0,0,0.6)',
+                  padding: 5,
+                  borderRadius: 12,
+                }}
+              >
+                <Ionicons name="camera-reverse-outline" size={14} color="#FFFFFF" />
+              </Pressable>
+              <View
+                style={{
+                  position: 'absolute',
+                  bottom: 6,
+                  left: 6,
+                  backgroundColor: 'rgba(0,0,0,0.6)',
+                  paddingHorizontal: 6,
+                  paddingVertical: 2,
+                  borderRadius: 4,
+                }}
+              >
+                <Text style={{ color: '#FFFFFF', fontSize: 9, fontWeight: '700' }}>You</Text>
+              </View>
+            </View>
+          </ImageBackground>
+        ) : viewMode === 'gallery' ? (
+          /* GALLERY GRID VIEW (2x3 Grid) */
+          <ScrollView contentContainerStyle={{ padding: 12, gap: 10 }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'space-between' }}>
+              {participantsList.map((item) => (
+                <View
+                  key={item.id}
+                  style={{
+                    width: '48.5%',
+                    height: 145,
+                    borderRadius: 12,
+                    overflow: 'hidden',
+                    backgroundColor: '#1F2937',
+                    borderWidth: item.name.includes(activeHostName) ? 2 : 1,
+                    borderColor: item.name.includes(activeHostName) ? '#10B981' : '#374151',
+                    position: 'relative',
+                  }}
+                >
+                  {item.id === (profile?.id || 'self') && isCameraOn && permission?.granted ? (
+                    <CameraView facing={cameraFacing} style={{ width: '100%', height: '100%' }} />
+                  ) : (
+                    <Image source={{ uri: item.avatar }} style={{ width: '100%', height: '100%' }} />
+                  )}
+
+                  {/* Tile Footer Badge */}
+                  <View
+                    style={{
+                      position: 'absolute',
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      backgroundColor: 'rgba(0,0,0,0.7)',
+                      paddingHorizontal: 8,
+                      paddingVertical: 5,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <Text numberOfLines={1} style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '600', flex: 1 }}>
+                      {item.name}
+                    </Text>
+                    <Ionicons
+                      name={item.isMuted ? 'mic-off' : 'mic'}
+                      size={13}
+                      color={item.isMuted ? '#EF4444' : '#10B981'}
+                    />
+                  </View>
+                </View>
+              ))}
+            </View>
+          </ScrollView>
+        ) : (
+          /* SCREEN SHARE PRESENTATION VIEW */
+          <View style={{ flex: 1, backgroundColor: '#0F172A', padding: 16 }}>
+            <View
+              style={{
+                flex: 1,
+                backgroundColor: '#1E293B',
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: '#334155',
+                padding: 16,
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <Ionicons name="desktop-outline" size={24} color="#38BDF8" />
+                <Text style={{ color: '#38BDF8', fontWeight: '700', fontSize: 14 }}>
+                  {activeHostName} is sharing screen: Live_Interactive_Deck.pdf
+                </Text>
+              </View>
+
+              <View
+                style={{
+                  width: '100%',
+                  height: 180,
+                  backgroundColor: '#0F172A',
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: '#334155',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  padding: 12,
+                }}
+              >
+                <Text style={{ color: '#F8FAFC', fontSize: 16, fontWeight: '800', textAlign: 'center' }}>
+                  ∬_S (∇ × F) · dS = ∮_C F · dr
+                </Text>
+                <Text style={{ color: '#94A3B8', fontSize: 12, marginTop: 8, textAlign: 'center' }}>
+                  Live Presentation & Collaborative Whiteboard Deck
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+                <Pill label="Slide 4 / 18" compact tint="rgba(56,189,248,0.2)" textColor="#38BDF8" />
+                <Pill label="Annotating Live" compact tint="rgba(16,185,129,0.2)" textColor="#10B981" />
+              </View>
+            </View>
+
+            {/* Inset Speaker PiP */}
+            <View
+              style={{
+                position: 'absolute',
+                top: 24,
+                right: 24,
+                width: 90,
+                height: 110,
+                borderRadius: 10,
+                overflow: 'hidden',
+                borderWidth: 2,
+                borderColor: '#38BDF8',
+              }}
+            >
+              <Image source={{ uri: activeHostAvatar }} style={{ width: '100%', height: '100%' }} />
+            </View>
+          </View>
+        )}
+      </View>
+
+      {/* Floating Emoji Reactions Bar */}
+      {showReactionsBar ? (
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-around',
+            backgroundColor: '#1F2937',
+            paddingVertical: 10,
+            paddingHorizontal: 16,
+            borderTopWidth: 1,
+            borderTopColor: '#374151',
+          }}
+        >
+          {['👏', '👍', '🔥', '❤️', '🎉', '💡', '🙌'].map((emoji) => (
+            <Pressable
+              key={emoji}
+              onPress={() => triggerReaction(emoji)}
+              style={{
+                padding: 8,
+                backgroundColor: '#374151',
+                borderRadius: 20,
+              }}
+            >
+              <Text style={{ fontSize: 20 }}>{emoji}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+
+      {/* Zoom Bottom Control Toolbar */}
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-around',
+          alignItems: 'center',
+          paddingVertical: 12,
+          paddingHorizontal: 8,
+          backgroundColor: '#111827',
+          borderTopWidth: 1,
+          borderTopColor: '#1F2937',
+        }}
+      >
+        {/* Mute Audio Toggle */}
+        <Pressable
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          onPress={() => setIsMuted((prev) => !prev)}
+          style={({ pressed }) => [{ alignItems: 'center', gap: 4 }, pressed && { opacity: 0.7, transform: [{ scale: 0.92 }] }]}
+        >
+          <View
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              backgroundColor: isMuted ? '#EF4444' : '#374151',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
+          >
+            <Ionicons name={isMuted ? 'mic-off' : 'mic'} size={20} color="#FFFFFF" />
+          </View>
+          <Text style={{ color: '#9CA3AF', fontSize: 10 }}>{isMuted ? 'Unmute' : 'Mute'}</Text>
+        </Pressable>
+
+        {/* Video Cam Toggle */}
+        <Pressable
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          onPress={handleToggleCamera}
+          style={({ pressed }) => [{ alignItems: 'center', gap: 4 }, pressed && { opacity: 0.7, transform: [{ scale: 0.92 }] }]}
+        >
+          <View
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              backgroundColor: isCameraOn ? '#374151' : '#EF4444',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
+          >
+            <Ionicons name={isCameraOn ? 'videocam' : 'videocam-off'} size={20} color="#FFFFFF" />
+          </View>
+          <Text style={{ color: '#9CA3AF', fontSize: 10 }}>{isCameraOn ? 'Stop Video' : 'Start Video'}</Text>
+        </Pressable>
+
+        {/* Flip Camera */}
+        <Pressable
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          onPress={handleFlipCamera}
+          style={({ pressed }) => [{ alignItems: 'center', gap: 4 }, pressed && { opacity: 0.7, transform: [{ scale: 0.92 }] }]}
+        >
+          <View
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              backgroundColor: '#374151',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
+          >
+            <Ionicons name="camera-reverse" size={20} color="#FFFFFF" />
+          </View>
+          <Text style={{ color: '#9CA3AF', fontSize: 10 }}>Flip</Text>
+        </Pressable>
+
+        {/* In-Meeting Chat Drawer Toggle */}
+        <Pressable
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          onPress={() => setShowInMeetingChat(true)}
+          style={({ pressed }) => [{ alignItems: 'center', gap: 4 }, pressed && { opacity: 0.7, transform: [{ scale: 0.92 }] }]}
+        >
+          <View
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              backgroundColor: '#374151',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
+          >
+            <Ionicons name="chatbubbles" size={20} color="#FFFFFF" />
+          </View>
+          <Text style={{ color: '#9CA3AF', fontSize: 10 }}>Chat</Text>
+        </Pressable>
+
+        {/* Participants Roster */}
+        <Pressable
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          onPress={() => setShowParticipants(true)}
+          style={({ pressed }) => [{ alignItems: 'center', gap: 4 }, pressed && { opacity: 0.7, transform: [{ scale: 0.92 }] }]}
+        >
+          <View
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              backgroundColor: '#374151',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
+          >
+            <Ionicons name="people" size={20} color="#FFFFFF" />
+          </View>
+          <Text style={{ color: '#9CA3AF', fontSize: 10 }}>Peers ({participantsList.length})</Text>
+        </Pressable>
+
+        {/* Reactions Toggle */}
+        <Pressable
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          onPress={() => setShowReactionsBar((prev) => !prev)}
+          style={({ pressed }) => [{ alignItems: 'center', gap: 4 }, pressed && { opacity: 0.7, transform: [{ scale: 0.92 }] }]}
+        >
+          <View
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              backgroundColor: isHandRaised || showReactionsBar ? '#F97316' : '#374151',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
+          >
+            <Ionicons name="happy" size={20} color="#FFFFFF" />
+          </View>
+          <Text style={{ color: '#9CA3AF', fontSize: 10 }}>Reactions</Text>
+        </Pressable>
+
+        {/* Leave Meeting */}
+        <Pressable
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          onPress={onLeave}
+          style={({ pressed }) => [{ alignItems: 'center', gap: 4 }, pressed && { opacity: 0.7, transform: [{ scale: 0.92 }] }]}
+        >
+          <View
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              backgroundColor: '#DC2626',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
+          >
+            <Ionicons name="call" size={20} color="#FFFFFF" />
+          </View>
+          <Text style={{ color: '#EF4444', fontSize: 10, fontWeight: '700' }}>End</Text>
+        </Pressable>
+      </View>
+
+      {/* Zoom In-Meeting Chat Drawer Modal */}
+      <Modal visible={showInMeetingChat} animationType="slide" transparent>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
+          <View style={{ height: '70%', backgroundColor: '#111827', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '700' }}>In-Meeting Live Chat</Text>
+              <Pressable onPress={() => setShowInMeetingChat(false)}>
+                <Ionicons name="close" size={24} color="#9CA3AF" />
+              </Pressable>
+            </View>
+
+            <ScrollView style={{ flex: 1, marginBottom: 12 }}>
+              {chatMessages.length === 0 ? (
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 40 }}>
+                  <Ionicons name="chatbox-ellipses-outline" size={36} color="#6B7280" />
+                  <Text style={{ color: '#9CA3AF', marginTop: 8, fontSize: 13, textAlign: 'center' }}>
+                    No messages yet. Send a live message to everyone in this meeting!
+                  </Text>
+                </View>
+              ) : (
+                chatMessages.map((msg) => (
+                  <View key={msg.id} style={{ marginBottom: 12, backgroundColor: '#1F2937', padding: 10, borderRadius: 10 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <Text style={{ color: '#38BDF8', fontWeight: '700', fontSize: 13 }}>{msg.sender}</Text>
+                      <Text style={{ color: '#6B7280', fontSize: 10 }}>{msg.time}</Text>
+                    </View>
+                    <Text style={{ color: '#F3F4F6', fontSize: 13 }}>{msg.text}</Text>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+              <TextInput
+                value={draftChat}
+                onChangeText={setDraftChat}
+                placeholder="Type a message to everyone..."
+                placeholderTextColor="#6B7280"
+                style={{
+                  flex: 1,
+                  backgroundColor: '#1F2937',
+                  color: '#FFFFFF',
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                  borderRadius: 12,
+                }}
+                onSubmitEditing={handleSendInMeetingChat}
+              />
+              <Pressable
+                onPress={handleSendInMeetingChat}
+                style={{ backgroundColor: '#3B82F6', padding: 12, borderRadius: 12 }}
+              >
+                <Ionicons name="send" size={18} color="#FFFFFF" />
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Zoom Participant Roster Modal */}
+      <Modal visible={showParticipants} animationType="slide" transparent>
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#111827' }}>
+          <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: '#1F2937', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '700' }}>
+              Participants ({participantsList.length})
+            </Text>
+            <Pressable onPress={() => setShowParticipants(false)}>
+              <Ionicons name="close" size={24} color="#9CA3AF" />
+            </Pressable>
+          </View>
+
+          {/* Roster Controls Bar */}
+          <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingVertical: 10 }}>
+            <Pressable
+              onPress={() => setIsMutedAll((prev) => !prev)}
+              style={{
+                flex: 1,
+                backgroundColor: isMutedAll ? '#EF4444' : '#374151',
+                paddingVertical: 10,
+                borderRadius: 8,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: '#FFFFFF', fontWeight: '600', fontSize: 13 }}>
+                {isMutedAll ? 'Unmute All' : 'Mute All'}
+              </Text>
+            </Pressable>
+            <Pressable
+              style={{
+                flex: 1,
+                backgroundColor: '#3B82F6',
+                paddingVertical: 10,
+                borderRadius: 8,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: '#FFFFFF', fontWeight: '600', fontSize: 13 }}>Invite Link</Text>
+            </Pressable>
+          </View>
+
+          <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
+            <TextInput
+              value={searchRoster}
+              onChangeText={setSearchRoster}
+              placeholder="Search participant..."
+              placeholderTextColor="#6B7280"
+              style={{
+                backgroundColor: '#1F2937',
+                color: '#FFFFFF',
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                borderRadius: 8,
+              }}
+            />
+          </View>
+
+          <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
+            {filteredRoster.map((p) => (
+              <View
+                key={p.id}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingVertical: 12,
+                  borderBottomWidth: 1,
+                  borderBottomColor: '#1F2937',
+                }}
+              >
+                <Avatar source={p.avatar} size={42} />
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '600' }}>{p.name}</Text>
+                  <Text style={{ color: '#9CA3AF', fontSize: 12 }}>{p.role}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  {p.isHandRaised ? <Text style={{ fontSize: 16 }}>✋</Text> : null}
                   <Ionicons
                     name={p.isMuted ? 'mic-off' : 'mic'}
                     size={18}
-                    color={p.isMuted ? brand.muted : '#59B980'}
+                    color={p.isMuted ? '#EF4444' : '#10B981'}
+                  />
+                  <Ionicons
+                    name={p.isCameraOn ? 'videocam' : 'videocam-off'}
+                    size={18}
+                    color={p.isCameraOn ? '#10B981' : '#EF4444'}
                   />
                 </View>
-              ))}
-            </ScrollView>
-
-            <PrimaryButton label="Close" onPress={() => setShowParticipants(false)} />
-          </View>
-        </View>
+              </View>
+            ))}
+          </ScrollView>
+        </SafeAreaView>
       </Modal>
     </SafeAreaView>
   );

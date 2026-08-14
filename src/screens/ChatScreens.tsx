@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
-  ScrollView,
   Text,
   TextInput,
   View,
@@ -18,51 +19,243 @@ import {
   SearchInput,
 } from '../components/UIComponents';
 import { useAppStore } from '../context/AppStoreContext';
-import { brand, MessageItem } from '../data/mockData';
-import { getMessages, sendSupabaseMessage, subscribeToThreadMessages } from '../lib/supabase';
+import { brand, MessageItem, ThreadPreview, UserProfile } from '../data/mockData';
+import {
+  fetchAllProfiles,
+  getMessages,
+  getOrCreateDirectThread,
+  getUserThreads,
+  sendSupabaseMessage,
+  subscribeToThreadMessages,
+} from '../lib/supabase';
 import { styles } from '../styles/appStyles';
 
-export function ChatListScreen({ onOpenThread }: { onOpenThread: () => void }) {
-  const { threads } = useAppStore();
+const hitSlop = { top: 8, bottom: 8, left: 8, right: 8 };
+
+export function ChatListScreen({
+  onOpenThread,
+  onSelectThread,
+}: {
+  onOpenThread: (threadId?: string) => void;
+  onSelectThread?: (threadId: string) => void;
+}) {
+  const { threads, profile } = useAppStore();
+  const [liveThreads, setLiveThreads] = useState<ThreadPreview[]>(threads);
+  const [showNewChatModal, setShowNewChatModal] = useState(false);
+  const [userList, setUserList] = useState<UserProfile[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const loadThreads = async () => {
+    if (profile?.id) {
+      const supThreads = await getUserThreads(profile.id);
+      if (supThreads && supThreads.length > 0) {
+        setLiveThreads(supThreads);
+      }
+    }
+  };
+
+  useEffect(() => {
+    setLiveThreads(threads);
+    loadThreads();
+  }, [threads, profile.id]);
+
+  const handleOpenNewChatModal = async () => {
+    setShowNewChatModal(true);
+    setLoadingUsers(true);
+    const users = await fetchAllProfiles(profile.id);
+    setUserList(users);
+    setLoadingUsers(false);
+  };
+
+  const handleSelectUserToChat = async (user: UserProfile) => {
+    setShowNewChatModal(false);
+    const targetThread = await getOrCreateDirectThread(profile.id || 'user-1', user);
+    setLiveThreads((prev) => {
+      if (prev.some((t) => t.id === targetThread.id)) return prev;
+      return [targetThread, ...prev];
+    });
+    if (onSelectThread) {
+      onSelectThread(targetThread.id);
+    } else {
+      onOpenThread(targetThread.id);
+    }
+  };
+
+  const filteredUsers = userList.filter(
+    (u) =>
+      u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.major.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.university.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const displayThreads = liveThreads.filter((t) =>
+    t.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
     <View style={[styles.flexFill, styles.screenContent]}>
       <View style={styles.screenHeaderRow}>
         <Text style={styles.screenTitle}>Messages</Text>
-        <IconButton icon="add" onPress={onOpenThread} filled />
+        <IconButton icon="add" onPress={handleOpenNewChatModal} filled />
       </View>
-      <SearchInput placeholder="Search conversations..." />
+      <SearchInput
+        placeholder="Search conversations..."
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+      />
 
-      <FlatList
-        data={threads}
-        keyExtractor={(item) => item.id}
-        showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => (
-          <Pressable
-            onPress={onOpenThread}
-            style={styles.threadRow}
-            accessible={true}
-            accessibilityRole="button"
-            accessibilityLabel={`Chat thread with ${item.name}, ${item.preview}`}
+      {displayThreads.length === 0 ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+          <View
+            style={{
+              width: 64,
+              height: 64,
+              borderRadius: 32,
+              backgroundColor: '#EEF2FF',
+              justifyContent: 'center',
+              alignItems: 'center',
+              marginBottom: 16,
+            }}
           >
-            <Avatar source={item.avatar} size={44} />
-            <View style={styles.flexFill}>
-              <View style={styles.threadTop}>
-                <Text style={styles.threadName}>{item.name}</Text>
-                <Text style={styles.threadTime}>{item.time}</Text>
+            <Ionicons name="chatbubbles-outline" size={32} color={brand.primary} />
+          </View>
+          <Text style={{ fontSize: 18, fontWeight: '700', color: brand.text, textAlign: 'center', marginBottom: 8 }}>
+            No Conversations Yet
+          </Text>
+          <Text style={{ fontSize: 14, color: brand.muted, textAlign: 'center', marginBottom: 20 }}>
+            Start a live real-time chat with another registered student or tutor!
+          </Text>
+          <Pressable
+            hitSlop={hitSlop}
+            onPress={handleOpenNewChatModal}
+            style={({ pressed }) => [
+              {
+                backgroundColor: brand.primary,
+                paddingHorizontal: 20,
+                paddingVertical: 12,
+                borderRadius: 12,
+              },
+              pressed && { opacity: 0.8, transform: [{ scale: 0.96 }] },
+            ]}
+          >
+            <Text style={{ color: '#FFFFFF', fontWeight: '600', fontSize: 15 }}>+ Start New Live Chat</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <FlatList
+          data={displayThreads}
+          keyExtractor={(item) => item.id}
+          showsVerticalScrollIndicator={false}
+          renderItem={({ item }) => (
+            <Pressable
+              hitSlop={hitSlop}
+              onPress={() => {
+                if (onSelectThread) {
+                  onSelectThread(item.id);
+                } else {
+                  onOpenThread(item.id);
+                }
+              }}
+              style={({ pressed }) => [styles.threadRow, pressed && { opacity: 0.75, backgroundColor: '#F4F2EE' }]}
+              accessible={true}
+              accessibilityRole="button"
+              accessibilityLabel={`Chat thread with ${item.name}, ${item.preview}`}
+            >
+              <Avatar source={item.avatar} size={44} />
+              <View style={styles.flexFill}>
+                <View style={styles.threadTop}>
+                  <Text style={styles.threadName}>{item.name}</Text>
+                  <Text style={styles.threadTime}>{item.time}</Text>
+                </View>
+                <Text numberOfLines={1} style={styles.threadPreview}>
+                  {item.preview}
+                </Text>
               </View>
-              <Text numberOfLines={1} style={styles.threadPreview}>
-                {item.preview}
+              {item.unread ? (
+                <View style={styles.unreadBadge}>
+                  <Text style={styles.unreadText}>{item.unread}</Text>
+                </View>
+              ) : null}
+            </Pressable>
+          )}
+        />
+      )}
+
+      {/* New Chat Modal */}
+      <Modal visible={showNewChatModal} animationType="slide" transparent={false}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingHorizontal: 20,
+              paddingVertical: 16,
+              borderBottomWidth: 1,
+              borderBottomColor: brand.border,
+            }}
+          >
+            <Text style={{ fontSize: 20, fontWeight: '700', color: brand.text }}>New Live Chat</Text>
+            <Pressable hitSlop={hitSlop} onPress={() => setShowNewChatModal(false)} style={({ pressed }) => [{ padding: 4 }, pressed && { opacity: 0.6 }]}>
+              <Ionicons name="close" size={24} color={brand.text} />
+            </Pressable>
+          </View>
+
+          <View style={{ paddingHorizontal: 20, paddingVertical: 12 }}>
+            <SearchInput
+              placeholder="Search registered members..."
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+          </View>
+
+          {loadingUsers ? (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+              <ActivityIndicator size="large" color={brand.primary} />
+              <Text style={{ marginTop: 12, color: brand.muted }}>Loading registered members...</Text>
+            </View>
+          ) : filteredUsers.length === 0 ? (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+              <Ionicons name="people-outline" size={48} color={brand.muted} />
+              <Text style={{ marginTop: 12, fontSize: 16, color: brand.muted, textAlign: 'center' }}>
+                No other registered users found. Sign up a second account to test live messaging!
               </Text>
             </View>
-            {item.unread ? (
-              <View style={styles.unreadBadge}>
-                <Text style={styles.unreadText}>{item.unread}</Text>
-              </View>
-            ) : null}
-          </Pressable>
-        )}
-      />
+          ) : (
+            <FlatList
+              data={filteredUsers}
+              keyExtractor={(item) => item.id || item.email}
+              contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24 }}
+              renderItem={({ item }) => (
+                <Pressable
+                  hitSlop={hitSlop}
+                  onPress={() => handleSelectUserToChat(item)}
+                  style={({ pressed }) => [
+                    {
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      paddingVertical: 12,
+                      borderBottomWidth: 1,
+                      borderBottomColor: brand.border,
+                    },
+                    pressed && { opacity: 0.7, backgroundColor: '#F8F9FA' },
+                  ]}
+                >
+                  <Avatar source={item.avatar} size={48} />
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={{ fontSize: 16, fontWeight: '600', color: brand.text }}>{item.name}</Text>
+                    <Text style={{ fontSize: 13, color: brand.muted }}>
+                      {item.major} · {item.university}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={brand.muted} />
+                </Pressable>
+              )}
+            />
+          )}
+        </SafeAreaView>
+      </Modal>
     </View>
   );
 }
@@ -74,36 +267,48 @@ export function PrivateChatScreen({
   onBack: () => void;
   threadId: string;
 }) {
-  const { threads, messagesByThread, sendMessage } = useAppStore();
+  const { threads, messagesByThread, sendMessage, profile } = useAppStore();
   const [draft, setDraft] = useState('');
   const [liveMessages, setLiveMessages] = useState<MessageItem[]>(
-    messagesByThread[threadId] ?? messagesByThread.default
+    messagesByThread[threadId] || []
   );
   const flatListRef = useRef<FlatList<MessageItem>>(null);
 
-  const thread = threads.find((item) => item.id === threadId) ?? threads[0];
+  const activeThread = threads.find((item) => item.id === threadId) || {
+    id: threadId,
+    name: 'Live Chat',
+    preview: '',
+    time: 'Now',
+    avatar: 'https://i.pravatar.cc/120?u=chat',
+    online: true,
+  };
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
 
     async function initRealtimeChat() {
-      // Load initial messages from Supabase
-      const history = await getMessages(threadId);
+      const activeUserId = profile?.id || 'user-me';
+
+      // Fetch message history from Supabase
+      const history = await getMessages(threadId, activeUserId);
       if (history && history.length > 0) {
         setLiveMessages(history);
       }
 
-      // Subscribe to Realtime WebSocket updates
-      unsubscribe = subscribeToThreadMessages(threadId, (newMsg) => {
-        setLiveMessages((prev) => {
-          // Avoid duplicate messages if already present
-          if (prev.some((m) => m.id === newMsg.id || (m.text === newMsg.text && m.sender === 'me'))) {
-            return prev;
-          }
-          return [...prev, newMsg];
-        });
-        flatListRef.current?.scrollToEnd({ animated: true });
-      });
+      // Subscribe to live WebSocket messages for threadId
+      unsubscribe = subscribeToThreadMessages(
+        threadId,
+        (newMsg) => {
+          setLiveMessages((prev) => {
+            if (prev.some((m) => m.id === newMsg.id || (m.text === newMsg.text && m.sender === 'me'))) {
+              return prev;
+            }
+            return [...prev, newMsg];
+          });
+          flatListRef.current?.scrollToEnd({ animated: true });
+        },
+        activeUserId
+      );
     }
 
     initRealtimeChat();
@@ -111,7 +316,7 @@ export function PrivateChatScreen({
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, [threadId]);
+  }, [threadId, profile.id]);
 
   const handleSend = async () => {
     if (!draft.trim()) return;
@@ -119,23 +324,24 @@ export function PrivateChatScreen({
     const textToSend = draft.trim();
     setDraft('');
 
-    // Optimistic local state update
-    sendMessage(thread.id, textToSend);
-    setLiveMessages((prev) => [
-      ...prev,
-      {
-        id: `msg-${Date.now()}`,
-        sender: 'me',
-        text: textToSend,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      },
-    ]);
+    // Optimistic UI addition
+    const newMsg: MessageItem = {
+      id: `msg-${Date.now()}`,
+      sender: 'me',
+      text: textToSend,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
 
-    flatListRef.current?.scrollToEnd({ animated: true });
+    sendMessage(activeThread.id, textToSend);
+    setLiveMessages((prev) => [...prev, newMsg]);
 
-    // Persist to Supabase backend asynchronously
+    setTimeout(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    }, 50);
+
+    // Send to Supabase live channel
     try {
-      await sendSupabaseMessage(threadId, textToSend);
+      await sendSupabaseMessage(threadId, textToSend, profile?.id);
     } catch (err) {
       console.warn('Realtime message send error:', err);
     }
@@ -148,13 +354,20 @@ export function PrivateChatScreen({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.chatHeader}>
-          <Pressable onPress={onBack} style={styles.backButton} accessible={true} accessibilityRole="button" accessibilityLabel="Go back">
+          <Pressable
+            onPress={onBack}
+            hitSlop={hitSlop}
+            style={({ pressed }) => [styles.backButton, pressed && { opacity: 0.7 }]}
+            accessible={true}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
             <Ionicons name="arrow-back" size={20} color={brand.text} />
           </Pressable>
-          <Avatar source={thread.avatar} size={38} />
+          <Avatar source={activeThread.avatar} size={38} />
           <View style={styles.flexFill}>
-            <Text style={styles.threadName}>{thread.name}</Text>
-            <Text style={styles.onlineText}>{thread.online ? 'Live Realtime Online' : 'Away'}</Text>
+            <Text style={styles.threadName}>{activeThread.name}</Text>
+            <Text style={styles.onlineText}>Live Realtime Online</Text>
           </View>
           <CircleIconButton icon="information-circle-outline" onPress={onBack} />
         </View>
@@ -166,7 +379,7 @@ export function PrivateChatScreen({
           style={styles.flexFill}
           contentContainerStyle={styles.chatMessages}
           onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-          ListHeaderComponent={<Text style={styles.chatDayMarker}>Today</Text>}
+          ListHeaderComponent={<Text style={styles.chatDayMarker}>Live Chat Session</Text>}
           renderItem={({ item: message }) => (
             <View
               style={[
@@ -174,7 +387,7 @@ export function PrivateChatScreen({
                 message.sender === 'me' ? styles.messageBubbleMine : styles.messageBubbleTheirs,
               ]}
               accessible={true}
-              accessibilityLabel={`Message from ${message.sender === 'me' ? 'you' : thread.name}: ${message.text} at ${message.time}`}
+              accessibilityLabel={`Message: ${message.text} at ${message.time}`}
             >
               <Text
                 style={[
@@ -206,11 +419,7 @@ export function PrivateChatScreen({
             style={styles.composerInput}
             onSubmitEditing={handleSend}
           />
-          <CircleIconButton
-            icon="send"
-            onPress={handleSend}
-            filled
-          />
+          <CircleIconButton icon="send" onPress={handleSend} filled />
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

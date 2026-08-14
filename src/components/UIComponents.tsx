@@ -11,7 +11,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { TabKey, useAppStore } from '../context/AppStoreContext';
 import { brand } from '../data/mockData';
-import { styles } from '../styles/appStyles';
+import { styles, ThemeColors, useThemeColors } from '../styles/appStyles';
+
+const defaultHitSlop = { top: 8, bottom: 8, left: 8, right: 8 };
 
 export function HeaderBar({
   title,
@@ -22,12 +24,17 @@ export function HeaderBar({
   onBack: () => void;
   rightElement?: React.ReactNode;
 }) {
+  const colors = useThemeColors();
   return (
     <View style={styles.headerBar}>
-      <Pressable onPress={onBack} style={styles.backButton}>
-        <Ionicons name="arrow-back" size={20} color={brand.text} />
+      <Pressable
+        onPress={onBack}
+        hitSlop={defaultHitSlop}
+        style={({ pressed }) => [styles.backButton, pressed && { opacity: 0.7, transform: [{ scale: 0.94 }] }]}
+      >
+        <Ionicons name="arrow-back" size={20} color={colors.text} />
       </Pressable>
-      <Text style={styles.headerTitle}>{title}</Text>
+      <Text style={[styles.headerTitle, { color: colors.text }]}>{title}</Text>
       {rightElement ? <View style={{ marginLeft: 'auto' }}>{rightElement}</View> : null}
     </View>
   );
@@ -37,7 +44,8 @@ export function PrimaryButton({ label, onPress }: { label: string; onPress: () =
   return (
     <Pressable
       onPress={onPress}
-      style={styles.primaryButton}
+      hitSlop={defaultHitSlop}
+      style={({ pressed }) => [styles.primaryButton, pressed && { opacity: 0.82, transform: [{ scale: 0.97 }] }]}
       accessible={true}
       accessibilityRole="button"
       accessibilityLabel={label}
@@ -48,15 +56,17 @@ export function PrimaryButton({ label, onPress }: { label: string; onPress: () =
 }
 
 export function OutlineButton({ label, onPress }: { label: string; onPress: () => void }) {
+  const colors = useThemeColors();
   return (
     <Pressable
       onPress={onPress}
-      style={styles.outlineButton}
+      hitSlop={defaultHitSlop}
+      style={({ pressed }) => [styles.outlineButton, { borderColor: colors.border }, pressed && { opacity: 0.75, transform: [{ scale: 0.97 }] }]}
       accessible={true}
       accessibilityRole="button"
       accessibilityLabel={label}
     >
-      <Text style={styles.outlineButtonText}>{label}</Text>
+      <Text style={[styles.outlineButtonText, { color: colors.text }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -65,7 +75,8 @@ export function PrimarySmallButton({ label, onPress }: { label: string; onPress:
   return (
     <Pressable
       onPress={onPress}
-      style={styles.primarySmallButton}
+      hitSlop={defaultHitSlop}
+      style={({ pressed }) => [styles.primarySmallButton, pressed && { opacity: 0.8, transform: [{ scale: 0.95 }] }]}
       accessible={true}
       accessibilityRole="button"
       accessibilityLabel={label}
@@ -76,15 +87,17 @@ export function PrimarySmallButton({ label, onPress }: { label: string; onPress:
 }
 
 export function GhostSmallButton({ label, onPress }: { label: string; onPress: () => void }) {
+  const colors = useThemeColors();
   return (
     <Pressable
       onPress={onPress}
-      style={styles.ghostSmallButton}
+      hitSlop={defaultHitSlop}
+      style={({ pressed }) => [styles.ghostSmallButton, pressed && { opacity: 0.7, transform: [{ scale: 0.95 }] }]}
       accessible={true}
       accessibilityRole="button"
       accessibilityLabel={label}
     >
-      <Text style={styles.ghostSmallText}>{label}</Text>
+      <Text style={[styles.ghostSmallText, { color: colors.muted }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -106,28 +119,48 @@ export function LabelledInput({
   multiline?: boolean;
   keyboardType?: 'default' | 'email-address';
 }) {
+  const colors = useThemeColors();
   return (
     <View style={styles.inputGroup}>
-      <Text style={styles.inputLabel}>{label}</Text>
+      <Text style={[styles.inputLabel, { color: colors.text }]}>{label}</Text>
       <TextInput
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor={brand.muted}
+        placeholderTextColor={colors.muted}
         secureTextEntry={secureTextEntry}
         multiline={multiline}
         keyboardType={keyboardType}
-        style={[styles.input, multiline ? styles.inputMultiline : undefined]}
+        style={[
+          styles.input,
+          { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border },
+          multiline ? styles.inputMultiline : undefined,
+        ]}
       />
     </View>
   );
 }
 
-export function SearchInput({ placeholder }: { placeholder: string }) {
+export function SearchInput({
+  placeholder,
+  value,
+  onChangeText,
+}: {
+  placeholder: string;
+  value?: string;
+  onChangeText?: (text: string) => void;
+}) {
+  const colors = useThemeColors();
   return (
-    <View style={styles.searchBar}>
-      <Ionicons name="search-outline" size={18} color={brand.muted} />
-      <Text style={styles.searchPlaceholder}>{placeholder}</Text>
+    <View style={[styles.searchBar, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+      <Ionicons name="search-outline" size={18} color={colors.muted} />
+      <TextInput
+        placeholder={placeholder}
+        placeholderTextColor={colors.muted}
+        value={value}
+        onChangeText={onChangeText}
+        style={{ flex: 1, fontSize: 14, color: colors.text, marginLeft: 8 }}
+      />
     </View>
   );
 }
@@ -138,44 +171,71 @@ export function Pill({
   tint,
   textColor,
   compact,
+  onPress,
 }: {
   label: string;
   active?: boolean;
   tint?: string;
   textColor?: string;
   compact?: boolean;
+  onPress?: () => void;
 }) {
-  return (
+  const colors = useThemeColors();
+  const content = (
     <View
       style={[
         styles.pill,
+        { backgroundColor: colors.inputBg },
         active ? styles.pillActive : undefined,
         tint ? { backgroundColor: tint } : undefined,
         compact ? styles.pillCompact : undefined,
       ]}
     >
-      <Text style={[styles.pillText, active ? styles.pillTextActive : undefined, textColor ? { color: textColor } : undefined]}>
+      <Text style={[styles.pillText, { color: colors.text }, active ? styles.pillTextActive : undefined, textColor ? { color: textColor } : undefined]}>
         {label}
       </Text>
     </View>
   );
+
+  if (onPress) {
+    return (
+      <Pressable hitSlop={defaultHitSlop} onPress={onPress} style={({ pressed }) => [pressed && { opacity: 0.75, transform: [{ scale: 0.96 }] }]}>
+        {content}
+      </Pressable>
+    );
+  }
+
+  return content;
 }
 
 export function StatCard({
   label,
   value,
   accent,
+  onPress,
 }: {
   label: string;
   value: string;
   accent?: string;
+  onPress?: () => void;
 }) {
-  return (
-    <View style={styles.statCard}>
-      <Text style={[styles.statValue, accent ? { color: accent } : undefined]}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+  const colors = useThemeColors();
+  const content = (
+    <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <Text style={[styles.statValue, { color: accent || colors.text }]}>{value}</Text>
+      <Text style={[styles.statLabel, { color: colors.muted }]}>{label}</Text>
     </View>
   );
+
+  if (onPress) {
+    return (
+      <Pressable onPress={onPress} style={({ pressed }) => [{ flex: 1 }, pressed && { opacity: 0.8, transform: [{ scale: 0.97 }] }]}>
+        {content}
+      </Pressable>
+    );
+  }
+
+  return content;
 }
 
 export function IconButton({
@@ -189,9 +249,19 @@ export function IconButton({
   badge?: string;
   filled?: boolean;
 }) {
+  const colors = useThemeColors();
   return (
-    <Pressable onPress={onPress} style={[styles.iconButton, filled ? styles.iconButtonFilled : undefined]}>
-      <Ionicons name={icon} size={18} color={filled ? '#fff' : brand.text} />
+    <Pressable
+      onPress={onPress}
+      hitSlop={defaultHitSlop}
+      style={({ pressed }) => [
+        styles.iconButton,
+        { backgroundColor: colors.card, borderColor: colors.border },
+        filled ? styles.iconButtonFilled : undefined,
+        pressed && { opacity: 0.75, transform: [{ scale: 0.93 }] },
+      ]}
+    >
+      <Ionicons name={icon} size={18} color={filled ? '#fff' : colors.text} />
       {badge ? (
         <View style={styles.iconBadge}>
           <Text style={styles.iconBadgeText}>{badge}</Text>
@@ -212,16 +282,20 @@ export function CircleIconButton({
   filled?: boolean;
   light?: boolean;
 }) {
+  const colors = useThemeColors();
   return (
     <Pressable
       onPress={onPress}
-      style={[
+      hitSlop={defaultHitSlop}
+      style={({ pressed }) => [
         styles.circleIconButton,
+        { backgroundColor: colors.inputBg },
         filled ? styles.circleIconFilled : undefined,
         light ? styles.circleIconLight : undefined,
+        pressed && { opacity: 0.75, transform: [{ scale: 0.93 }] },
       ]}
     >
-      <Ionicons name={icon} size={18} color={filled ? '#fff' : light ? brand.text : '#fff'} />
+      <Ionicons name={icon} size={18} color={filled ? '#fff' : light ? colors.text : '#fff'} />
     </Pressable>
   );
 }
@@ -235,7 +309,17 @@ export function Avatar({
   size: number;
   onPress?: () => void;
 }) {
-  const content = source.startsWith('http') ? (
+  const isImageUri =
+    typeof source === 'string' &&
+    (source.startsWith('http://') ||
+      source.startsWith('https://') ||
+      source.startsWith('file:') ||
+      source.startsWith('content:') ||
+      source.startsWith('ph:') ||
+      source.startsWith('blob:') ||
+      source.startsWith('data:'));
+
+  const content = isImageUri ? (
     <Image source={{ uri: source }} style={{ width: size, height: size, borderRadius: size / 2 }} />
   ) : (
     <View
@@ -253,7 +337,11 @@ export function Avatar({
   );
 
   if (onPress) {
-    return <Pressable onPress={onPress}>{content}</Pressable>;
+    return (
+      <Pressable hitSlop={defaultHitSlop} onPress={onPress} style={({ pressed }) => [pressed && { opacity: 0.8, transform: [{ scale: 0.95 }] }]}>
+        {content}
+      </Pressable>
+    );
   }
   return content;
 }
@@ -267,13 +355,18 @@ export function ActionRow({
   icon: keyof typeof Ionicons.glyphMap;
   onPress: () => void;
 }) {
+  const colors = useThemeColors();
   return (
-    <Pressable onPress={onPress} style={styles.actionRow}>
-      <View style={styles.actionIconWrap}>
-        <Ionicons name={icon} size={18} color={brand.text} />
+    <Pressable
+      onPress={onPress}
+      hitSlop={defaultHitSlop}
+      style={({ pressed }) => [styles.actionRow, { borderBottomColor: colors.border }, pressed && { opacity: 0.75, backgroundColor: colors.inputBg }]}
+    >
+      <View style={[styles.actionIconWrap, { backgroundColor: colors.inputBg }]}>
+        <Ionicons name={icon} size={18} color={colors.text} />
       </View>
-      <Text style={styles.actionLabel}>{label}</Text>
-      <Ionicons name="chevron-forward" size={18} color={brand.muted} />
+      <Text style={[styles.actionLabel, { color: colors.text }]}>{label}</Text>
+      <Ionicons name="chevron-forward" size={18} color={colors.muted} />
     </Pressable>
   );
 }
@@ -282,10 +375,12 @@ function TabBarItem({
   item,
   active,
   onPress,
+  colors,
 }: {
   item: { key: TabKey; label: string; icon: keyof typeof Ionicons.glyphMap; activeIcon: keyof typeof Ionicons.glyphMap };
   active: boolean;
   onPress: () => void;
+  colors: ThemeColors;
 }) {
   const scaleAnim = React.useRef(new Animated.Value(1)).current;
 
@@ -309,15 +404,16 @@ function TabBarItem({
       onPress={onPress}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
+      hitSlop={defaultHitSlop}
       style={styles.tabItem}
     >
       <Animated.View style={{ alignItems: 'center', transform: [{ scale: scaleAnim }] }}>
         <Ionicons
           name={active ? item.activeIcon : item.icon}
           size={20}
-          color={active ? brand.primary : brand.muted}
+          color={active ? colors.tabBarActive : colors.tabBarInactive}
         />
-        <Text style={[styles.tabLabel, active ? styles.tabLabelActive : undefined]}>{item.label}</Text>
+        <Text style={[styles.tabLabel, { color: active ? colors.tabBarActive : colors.tabBarInactive }]}>{item.label}</Text>
       </Animated.View>
     </Pressable>
   );
@@ -330,6 +426,7 @@ export function TabBar({
   activeTab: TabKey;
   onChange: (tab: TabKey) => void;
 }) {
+  const colors = useThemeColors();
   const items: Array<{
     key: TabKey;
     label: string;
@@ -344,13 +441,14 @@ export function TabBar({
   ];
 
   return (
-    <View style={styles.tabBar}>
+    <View style={[styles.tabBar, { backgroundColor: colors.tabBarBg, borderTopColor: colors.border }]}>
       {items.map((item) => (
         <TabBarItem
           key={item.key}
           item={item}
           active={item.key === activeTab}
           onPress={() => onChange(item.key)}
+          colors={colors}
         />
       ))}
     </View>
@@ -366,11 +464,10 @@ export function MainShell({
   onTabChange: (tab: TabKey) => void;
   children: React.ReactNode;
 }) {
-  const { theme } = useAppStore();
-  const bg = theme === 'midnight' ? '#0A0D1A' : theme === 'dark' ? '#141622' : '#FAF8F5';
+  const colors = useThemeColors();
 
   return (
-    <SafeAreaView style={[styles.mainShell, { backgroundColor: bg }]}>
+    <SafeAreaView style={[styles.mainShell, { backgroundColor: colors.bg }]}>
       <View style={styles.flexFill}>{children}</View>
       <TabBar activeTab={activeTab} onChange={onTabChange} />
     </SafeAreaView>

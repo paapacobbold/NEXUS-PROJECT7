@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { AppRoute, useAppStore } from '../context/AppStoreContext';
 import { brand, sampleLeaderboard, sampleRecordings } from '../data/mockData';
-import { styles } from '../styles/appStyles';
+import { styles, useThemeColors } from '../styles/appStyles';
 import { Avatar, Pill } from './UIComponents';
 
 export type SearchEntity = 'All' | 'Communities' | 'Sessions' | 'Lectures' | 'Meetups' | 'Tutors';
@@ -27,6 +27,7 @@ export function GlobalSearchModal({
   onNavigate: (route: AppRoute) => void;
 }) {
   const { communitiesList, sessionsList, meetupsList } = useAppStore();
+  const colors = useThemeColors();
   const [query, setQuery] = useState('');
   const [selectedEntity, setSelectedEntity] = useState<SearchEntity>('All');
 
@@ -48,14 +49,14 @@ export function GlobalSearchModal({
       }))
     : [];
 
-  // 2. Filter Live Sessions
+  // 2. Filter Sessions
   const matchedSessions = (selectedEntity === 'All' || selectedEntity === 'Sessions')
     ? sessionsList.filter((s) =>
-        !query.trim() || s.title.toLowerCase().includes(query.toLowerCase()) || s.tutor.toLowerCase().includes(query.toLowerCase())
+        !query.trim() || s.title.toLowerCase().includes(query.toLowerCase()) || s.tag.toLowerCase().includes(query.toLowerCase())
       ).map((s) => ({
         id: `sess-${s.id}`,
         title: s.title,
-        subtitle: `Live Session · Tutor: ${s.tutor}`,
+        subtitle: `Tutoring Session · ${s.tag}`,
         type: 'Sessions' as const,
         image: s.image,
         route: 'main-sessions' as AppRoute,
@@ -67,40 +68,40 @@ export function GlobalSearchModal({
     ? sampleRecordings.filter((r) =>
         !query.trim() || r.title.toLowerCase().includes(query.toLowerCase()) || r.category.toLowerCase().includes(query.toLowerCase())
       ).map((r) => ({
-        id: `rec-${r.id}`,
+        id: `lec-${r.id}`,
         title: r.title,
-        subtitle: `Video Lecture · ${r.category} (${r.duration})`,
+        subtitle: `Lecture · ${r.tutor}`,
         type: 'Lectures' as const,
         image: r.thumbnail,
         route: 'recordings' as AppRoute,
       }))
     : [];
 
-  // 4. Filter Meetups
+  // 4. Filter Campus Meetups
   const matchedMeetups = (selectedEntity === 'All' || selectedEntity === 'Meetups')
     ? meetupsList.filter((m) =>
         !query.trim() || m.title.toLowerCase().includes(query.toLowerCase()) || m.location.toLowerCase().includes(query.toLowerCase())
       ).map((m) => ({
         id: `meet-${m.id}`,
         title: m.title,
-        subtitle: `Campus Meetup · ${m.location}`,
+        subtitle: `In-Person Meetup · ${m.location}`,
         type: 'Meetups' as const,
-        image: 'https://images.unsplash.com/photo-1524813686514-a57563d77965?auto=format&fit=crop&w=400&q=80',
+        image: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=400&q=80',
         route: 'main-sessions' as AppRoute,
       }))
     : [];
 
-  // 5. Filter Tutors
+  // 5. Filter Tutors & Top Learners
   const matchedTutors = (selectedEntity === 'All' || selectedEntity === 'Tutors')
     ? sampleLeaderboard.filter((t) =>
-        !query.trim() || t.name.toLowerCase().includes(query.toLowerCase()) || t.role.toLowerCase().includes(query.toLowerCase())
-      ).map((t) => ({
-        id: `tutor-${t.name}`,
+        !query.trim() || t.name.toLowerCase().includes(query.toLowerCase())
+      ).map((t, idx) => ({
+        id: `tut-${t.name || idx}`,
         title: t.name,
-        subtitle: `Peer Tutor · ${t.role}`,
+        subtitle: `Campus Member · ${t.points} pts`,
         type: 'Tutors' as const,
         image: t.avatar,
-        route: 'main-profile' as AppRoute,
+        route: 'leaderboard' as AppRoute,
       }))
     : [];
 
@@ -115,21 +116,21 @@ export function GlobalSearchModal({
   return (
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.globalSearchBackdrop}>
-        <View style={styles.globalSearchCard}>
+        <View style={[styles.globalSearchCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           {/* Top Query Input Row */}
-          <View style={styles.globalSearchInputRow}>
-            <Ionicons name="search-outline" size={20} color={brand.muted} />
+          <View style={[styles.globalSearchInputRow, { backgroundColor: colors.inputBg }]}>
+            <Ionicons name="search-outline" size={20} color={colors.muted} />
             <TextInput
               value={query}
               onChangeText={setQuery}
               placeholder="Instant search across NEXUS..."
-              placeholderTextColor={brand.muted}
-              style={styles.globalSearchInput}
+              placeholderTextColor={colors.muted}
+              style={[styles.globalSearchInput, { color: colors.text }]}
               autoFocus
             />
             {query ? (
               <Pressable onPress={() => setQuery('')}>
-                <Ionicons name="close-circle" size={20} color={brand.muted} />
+                <Ionicons name="close-circle" size={20} color={colors.muted} />
               </Pressable>
             ) : null}
           </View>
@@ -150,11 +151,11 @@ export function GlobalSearchModal({
           </ScrollView>
 
           {/* Results List */}
-          <Text style={styles.mutedCopySmall}>Found {allResults.length} campus results</Text>
+          <Text style={[styles.mutedCopySmall, { color: colors.muted }]}>Found {allResults.length} campus results</Text>
           {allResults.length === 0 ? (
             <View style={{ paddingVertical: 30, alignItems: 'center' }}>
-              <Ionicons name="search-outline" size={32} color={brand.muted} />
-              <Text style={[styles.mutedCopy, { marginTop: 8 }]}>No matching campus resources found.</Text>
+              <Ionicons name="search-outline" size={32} color={colors.muted} />
+              <Text style={[styles.mutedCopy, { color: colors.muted, marginTop: 8 }]}>No matching campus resources found.</Text>
             </View>
           ) : (
             <FlatList
@@ -171,26 +172,26 @@ export function GlobalSearchModal({
                     onClose();
                     onNavigate(item.route);
                   }}
-                  style={styles.searchResultRow}
+                  style={[styles.searchResultRow, { borderBottomColor: colors.border }]}
                   accessible={true}
                   accessibilityRole="button"
                   accessibilityLabel={`${item.title}, ${item.subtitle}`}
                 >
                   <Avatar source={item.image} size={42} />
                   <View style={styles.flexFill}>
-                    <Text style={styles.communityName} numberOfLines={1}>{item.title}</Text>
-                    <Text style={styles.mutedCopySmall} numberOfLines={1}>{item.subtitle}</Text>
+                    <Text style={[styles.communityName, { color: colors.text }]} numberOfLines={1}>{item.title}</Text>
+                    <Text style={[styles.mutedCopySmall, { color: colors.muted }]} numberOfLines={1}>{item.subtitle}</Text>
                   </View>
-                  <View style={styles.entityBadge}>
-                    <Text style={styles.entityBadgeText}>{item.type}</Text>
+                  <View style={[styles.entityBadge, { backgroundColor: colors.inputBg }]}>
+                    <Text style={[styles.entityBadgeText, { color: colors.text }]}>{item.type}</Text>
                   </View>
                 </Pressable>
               )}
             />
           )}
 
-          <Pressable onPress={onClose} style={[styles.primaryButton, { backgroundColor: '#ECE7E0', marginTop: 6 }]}>
-            <Text style={[styles.primaryButtonText, { color: brand.text }]}>Close Search</Text>
+          <Pressable onPress={onClose} style={[styles.primaryButton, { backgroundColor: colors.inputBg, marginTop: 6 }]}>
+            <Text style={[styles.primaryButtonText, { color: colors.text }]}>Close Search</Text>
           </Pressable>
         </View>
       </View>

@@ -10,6 +10,7 @@ import {
   Pressable,
   ScrollView,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -24,8 +25,10 @@ import {
   PrimarySmallButton,
 } from '../components/UIComponents';
 import { useAppStore } from '../context/AppStoreContext';
-import { brand, CommunityItem } from '../data/mockData';
+import { brand, CommunityItem, DEFAULT_AVATAR } from '../data/mockData';
 import { styles } from '../styles/appStyles';
+
+const defaultHitSlop = { top: 8, bottom: 8, left: 8, right: 8 };
 
 export function CommunitiesScreen({
   onOpenDetail,
@@ -37,12 +40,44 @@ export function CommunitiesScreen({
   onCreateCommunity: () => void;
 }) {
   const { communitiesList, toggleJoinCommunity } = useAppStore();
+  const [activeFilter, setActiveFilter] = useState<'all' | 'joined' | 'stem' | 'humanities'>('all');
   const handleOpen = onOpenDetail || onOpenCommunity || (() => {});
+
+  const joinedCount = communitiesList.filter((c) => c.joined).length;
+
+  const filteredCommunities = communitiesList.filter((item) => {
+    if (activeFilter === 'joined') return item.joined;
+    if (activeFilter === 'stem') {
+      const s = (item.subject || '').toLowerCase() + ' ' + (item.name || '').toLowerCase();
+      return (
+        s.includes('math') ||
+        s.includes('physics') ||
+        s.includes('computer') ||
+        s.includes('stem') ||
+        s.includes('engineering') ||
+        s.includes('algo') ||
+        s.includes('science')
+      );
+    }
+    if (activeFilter === 'humanities') {
+      const s = (item.subject || '').toLowerCase() + ' ' + (item.name || '').toLowerCase();
+      return (
+        s.includes('literature') ||
+        s.includes('history') ||
+        s.includes('philosophy') ||
+        s.includes('arts') ||
+        s.includes('humanities') ||
+        s.includes('language') ||
+        s.includes('writing')
+      );
+    }
+    return true;
+  });
 
   return (
     <View style={[styles.flexFill, styles.screenContent]}>
       <FlatList
-        data={communitiesList}
+        data={filteredCommunities}
         keyExtractor={(item) => item.id}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
@@ -53,10 +88,26 @@ export function CommunitiesScreen({
             </View>
 
             <View style={styles.filterPillsRow}>
-              <Pill label="All (18)" active />
-              <Pill label="Joined (4)" />
-              <Pill label="STEM" />
-              <Pill label="Humanities" />
+              <Pill
+                label={`All (${communitiesList.length})`}
+                active={activeFilter === 'all'}
+                onPress={() => setActiveFilter('all')}
+              />
+              <Pill
+                label={`Joined (${joinedCount})`}
+                active={activeFilter === 'joined'}
+                onPress={() => setActiveFilter('joined')}
+              />
+              <Pill
+                label="STEM"
+                active={activeFilter === 'stem'}
+                onPress={() => setActiveFilter('stem')}
+              />
+              <Pill
+                label="Humanities"
+                active={activeFilter === 'humanities'}
+                onPress={() => setActiveFilter('humanities')}
+              />
             </View>
 
             <View style={styles.recommendedCard}>
@@ -65,14 +116,32 @@ export function CommunitiesScreen({
               </View>
               <View style={styles.flexFill}>
                 <Text style={styles.recommendedTitle}>Recommended for you</Text>
-                <Text style={styles.mutedCopySmall}>Based on your major in Computer Science</Text>
+                <Text style={styles.mutedCopySmall}>Based on active university learning groups</Text>
               </View>
             </View>
           </>
         }
+        ListEmptyComponent={
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 40 }}>
+            <Ionicons name="filter-outline" size={36} color={brand.muted} />
+            <Text style={{ fontSize: 15, fontWeight: '700', color: brand.text, marginTop: 8 }}>
+              No {activeFilter.toUpperCase()} Communities Found
+            </Text>
+            <Text style={{ fontSize: 13, color: brand.muted, marginTop: 4, textAlign: 'center' }}>
+              Tap "All" or create a new community to get started!
+            </Text>
+          </View>
+        }
         renderItem={({ item }) => (
           <View style={styles.largeCommunityCard}>
-            <Pressable onPress={handleOpen} accessible={true} accessibilityRole="button" accessibilityLabel={`View community ${item.name}`}>
+            <Pressable
+              hitSlop={defaultHitSlop}
+              onPress={handleOpen}
+              style={({ pressed }) => [pressed && { opacity: 0.82, transform: [{ scale: 0.98 }] }]}
+              accessible={true}
+              accessibilityRole="button"
+              accessibilityLabel={`View community ${item.name}`}
+            >
               <Image source={{ uri: item.image }} style={styles.largeCommunityImage} />
             </Pressable>
             <View style={styles.cardBody}>
@@ -84,10 +153,12 @@ export function CommunitiesScreen({
                   </Text>
                 </View>
                 <Pressable
+                  hitSlop={defaultHitSlop}
                   onPress={() => toggleJoinCommunity(item.id)}
-                  style={[
+                  style={({ pressed }) => [
                     styles.primarySmallButton,
                     item.joined ? styles.ghostSmallButton : undefined,
+                    pressed && { opacity: 0.75, transform: [{ scale: 0.95 }] },
                   ]}
                   accessible={true}
                   accessibilityRole="button"
@@ -125,12 +196,21 @@ export function CommunityDetailScreen({
   onOpenChat?: () => void;
   onScheduleSession?: () => void;
 }) {
-  const { updateProfile } = useAppStore();
+  const { profile, updateProfile } = useAppStore();
   const [showResources, setShowResources] = useState(false);
   const [downloaded, setDownloaded] = useState<Record<string, boolean>>({});
   const [customResources, setCustomResources] = useState<
     Array<{ id: string; title: string; size: string; category: string }>
   >([]);
+
+  const [postTitle, setPostTitle] = useState('');
+  const [postBody, setPostBody] = useState('');
+  const [postsFeedList, setPostsFeedList] = useState(
+    (community.postsFeed || []).map((p) => ({
+      ...p,
+      authorAvatar: DEFAULT_AVATAR,
+    }))
+  );
 
   const defaultResources = [
     { id: 'res-1', title: 'Calculus_III_Final_Formula_Sheet.pdf', size: '1.4 MB', category: 'Formula Sheet' },
@@ -143,7 +223,25 @@ export function CommunityDetailScreen({
 
   const handleDownload = (id: string) => {
     setDownloaded((prev) => ({ ...prev, [id]: true }));
-    updateProfile({ points: 20 });
+    updateProfile({ points: (profile.points || 0) + 20 });
+  };
+
+  const handleCreatePost = () => {
+    if (!postTitle.trim() || !postBody.trim()) return;
+    const newPost = {
+      id: `post-${Date.now()}`,
+      author: profile.name || 'Student Learner',
+      authorAvatar: profile.avatar || DEFAULT_AVATAR,
+      role: 'Student',
+      time: 'Just now',
+      title: postTitle.trim(),
+      body: postBody.trim(),
+      stats: '0 replies · 1 like',
+    };
+    setPostsFeedList((prev) => [newPost, ...prev]);
+    setPostTitle('');
+    setPostBody('');
+    updateProfile({ points: (profile.points || 0) + 30 });
   };
 
   const handlePickDocument = async () => {
@@ -163,7 +261,7 @@ export function CommunityDetailScreen({
           category: 'Uploaded PDF',
         };
         setCustomResources((prev) => [newResource, ...prev]);
-        updateProfile({ points: 50 });
+        updateProfile({ points: (profile.points || 0) + 50 });
       }
     } catch (err) {
       console.warn('Error picking document:', err);
@@ -177,12 +275,17 @@ export function CommunityDetailScreen({
           <ImageBackground source={{ uri: community.image }} style={styles.communityHero}>
             <LinearGradient colors={['rgba(7,9,24,0.2)', 'rgba(7,9,24,0.85)']} style={styles.flexFill}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14 }}>
-                <Pressable onPress={onBack} style={styles.backButton}>
+                <Pressable hitSlop={defaultHitSlop} onPress={onBack} style={({ pressed }) => [styles.backButton, pressed && { opacity: 0.7 }]}>
                   <Ionicons name="arrow-back" size={20} color="#fff" />
                 </Pressable>
                 <Pressable
+                  hitSlop={defaultHitSlop}
                   onPress={onJoin}
-                  style={[styles.primarySmallButton, community.joined ? styles.ghostSmallButton : undefined]}
+                  style={({ pressed }) => [
+                    styles.primarySmallButton,
+                    community.joined ? styles.ghostSmallButton : undefined,
+                    pressed && { opacity: 0.75, transform: [{ scale: 0.95 }] },
+                  ]}
                 >
                   <Text style={[styles.primarySmallText, community.joined ? styles.ghostSmallText : undefined]}>
                     {community.joined ? 'Joined' : 'Join'}
@@ -198,34 +301,78 @@ export function CommunityDetailScreen({
 
           <View style={styles.communityTabRow}>
             <Text style={[styles.communityTabText, styles.communityTabTextActive]}>Posts</Text>
-            <Pressable onPress={() => setShowResources(true)}>
-              <Text style={styles.communityTabText}>Resources (4 PDFs)</Text>
+            <Pressable hitSlop={defaultHitSlop} onPress={() => setShowResources(true)}>
+              <Text style={styles.communityTabText}>Resources ({studyResources.length} PDFs)</Text>
             </Pressable>
             <Text style={styles.communityTabText}>Members</Text>
           </View>
 
-          <Pressable onPress={() => setShowResources(true)} style={[styles.sharePrompt, { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }]}>
+          {/* Create New Community Post Box */}
+          <View style={{ backgroundColor: '#FFFFFF', padding: 14, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 12 }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: brand.text, marginBottom: 8 }}>
+              + Start a Discussion / Ask Question (+30 XP)
+            </Text>
+            <TextInput
+              value={postTitle}
+              onChangeText={setPostTitle}
+              placeholder="Question or topic title..."
+              placeholderTextColor={brand.muted}
+              style={{ backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, color: brand.text, marginBottom: 8 }}
+            />
+            <TextInput
+              value={postBody}
+              onChangeText={setPostBody}
+              placeholder="Share details, problem sets, or study notes..."
+              placeholderTextColor={brand.muted}
+              multiline
+              style={{ backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, color: brand.text, height: 60, textAlignVertical: 'top', marginBottom: 10 }}
+            />
+            <Pressable
+              hitSlop={defaultHitSlop}
+              onPress={handleCreatePost}
+              style={({ pressed }) => [
+                { backgroundColor: brand.primary, paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
+                pressed && { opacity: 0.8, transform: [{ scale: 0.97 }] },
+              ]}
+            >
+              <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 13 }}>Post to Group</Text>
+            </Pressable>
+          </View>
+
+          <Pressable hitSlop={defaultHitSlop} onPress={() => setShowResources(true)} style={({ pressed }) => [[styles.sharePrompt, { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }], pressed && { opacity: 0.8 }]}>
             <Ionicons name="document-attach-outline" size={20} color={brand.primary} />
             <Text style={{ fontSize: 13, fontWeight: '700', color: brand.primary }}>📄 Download Study Materials & PDFs (+20 XP)</Text>
           </Pressable>
 
-          {community.postsFeed.map((post) => (
-            <View key={post.id} style={styles.postCard}>
-              <View style={styles.postHeader}>
-                <Avatar source="https://i.pravatar.cc/120?img=12" size={36} />
-                <View style={styles.flexFill}>
-                  <View style={styles.threadTop}>
-                    <Text style={styles.threadName}>{post.author}</Text>
-                    {post.role ? <Pill label={post.role} tint="#FFF0D6" textColor="#B16A0E" compact /> : null}
-                  </View>
-                  <Text style={styles.threadTime}>{post.time}</Text>
-                </View>
-              </View>
-              <Text style={styles.postTitle}>{post.title}</Text>
-              <Text style={styles.postBody}>{post.body}</Text>
-              <Text style={styles.mutedCopySmall}>{post.stats}</Text>
+          {postsFeedList.length === 0 ? (
+            <View style={{ backgroundColor: '#FFFFFF', padding: 24, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', alignItems: 'center', marginTop: 12 }}>
+              <Ionicons name="chatbubbles-outline" size={36} color={brand.muted} />
+              <Text style={{ fontSize: 15, fontWeight: '700', color: brand.text, marginTop: 8, textAlign: 'center' }}>
+                No Community Posts Yet
+              </Text>
+              <Text style={{ fontSize: 13, color: brand.muted, marginTop: 4, textAlign: 'center' }}>
+                Be the first to start a topic or ask a question using the form above!
+              </Text>
             </View>
-          ))}
+          ) : (
+            postsFeedList.map((post) => (
+              <View key={post.id} style={styles.postCard}>
+                <View style={styles.postHeader}>
+                  <Avatar source={post.authorAvatar || DEFAULT_AVATAR} size={36} />
+                  <View style={styles.flexFill}>
+                    <View style={styles.threadTop}>
+                      <Text style={styles.threadName}>{post.author}</Text>
+                      {post.role ? <Pill label={post.role} tint="#FFF0D6" textColor="#B16A0E" compact /> : null}
+                    </View>
+                    <Text style={styles.threadTime}>{post.time}</Text>
+                  </View>
+                </View>
+                <Text style={styles.postTitle}>{post.title}</Text>
+                <Text style={styles.postBody}>{post.body}</Text>
+                <Text style={styles.mutedCopySmall}>{post.stats}</Text>
+              </View>
+            ))
+          )}
         </ScrollView>
 
         <View style={styles.stickyBottomActions}>
@@ -243,26 +390,30 @@ export function CommunityDetailScreen({
                 <Text style={styles.modalTitle}>Study Materials & PDFs 📄</Text>
                 <Text style={styles.mutedCopySmall}>Course formula sheets, slides & solved exams</Text>
               </View>
-              <Pressable onPress={() => setShowResources(false)}>
+              <Pressable hitSlop={defaultHitSlop} onPress={() => setShowResources(false)}>
                 <Ionicons name="close-circle" size={26} color={brand.muted} />
               </Pressable>
             </View>
 
             <Pressable
+              hitSlop={defaultHitSlop}
               onPress={handlePickDocument}
-              style={{
-                backgroundColor: '#EFF6FF',
-                borderColor: '#93C5FD',
-                borderWidth: 1.5,
-                borderStyle: 'dashed',
-                borderRadius: 14,
-                padding: 12,
-                marginVertical: 10,
-                alignItems: 'center',
-                flexDirection: 'row',
-                justifyContent: 'center',
-                gap: 8,
-              }}
+              style={({ pressed }) => [
+                {
+                  backgroundColor: '#EFF6FF',
+                  borderColor: '#93C5FD',
+                  borderWidth: 1.5,
+                  borderStyle: 'dashed',
+                  borderRadius: 14,
+                  padding: 12,
+                  marginVertical: 10,
+                  alignItems: 'center',
+                  flexDirection: 'row',
+                  justifyContent: 'center',
+                  gap: 8,
+                },
+                pressed && { opacity: 0.8, transform: [{ scale: 0.97 }] },
+              ]}
             >
               <Ionicons name="cloud-upload-outline" size={20} color={brand.primary} />
               <Text style={{ fontSize: 13, fontWeight: '700', color: brand.primary }}>
@@ -285,8 +436,13 @@ export function CommunityDetailScreen({
                     </View>
 
                     <Pressable
+                      hitSlop={defaultHitSlop}
                       onPress={() => handleDownload(res.id)}
-                      style={[styles.downloadPill, isDone ? styles.downloadPillDone : undefined]}
+                      style={({ pressed }) => [
+                        styles.downloadPill,
+                        isDone ? styles.downloadPillDone : undefined,
+                        pressed && { opacity: 0.75, transform: [{ scale: 0.95 }] },
+                      ]}
                     >
                       <Text style={{ fontSize: 12, fontWeight: '800', color: isDone ? '#137333' : '#fff' }}>
                         {isDone ? '✓ Downloaded' : 'PDF (+20 XP)'}

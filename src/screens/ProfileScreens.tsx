@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import React, { useState } from 'react';
 import {
   Image,
@@ -20,7 +21,8 @@ import {
   StatCard,
 } from '../components/UIComponents';
 import { useAppStore } from '../context/AppStoreContext';
-import { brand, NotificationPrefs, profileBadges, UserProfile } from '../data/mockData';
+import { brand, DEFAULT_AVATAR, NotificationPrefs, profileBadges, UserProfile } from '../data/mockData';
+import { updateUserProfile } from '../lib/supabase';
 import { styles } from '../styles/appStyles';
 
 export function ProfileScreen({
@@ -34,7 +36,7 @@ export function ProfileScreen({
   onNotificationPreferences: () => void;
   onSignOut?: () => void;
 }) {
-  const { profile, updateProfile, theme, setTheme } = useAppStore();
+  const { profile, updateProfile } = useAppStore();
   const [endorsements, setEndorsements] = useState<Record<string, number>>({
     'Calculus III': 18,
     'Data Structures': 24,
@@ -56,7 +58,7 @@ export function ProfileScreen({
       ...prev,
       [skill]: (prev[skill] || 0) + 1,
     }));
-    updateProfile({ points: 10 });
+    updateProfile({ points: (profile.points || 0) + 10 });
   };
 
   const handleAddReview = () => {
@@ -75,7 +77,7 @@ export function ProfileScreen({
 
     // Calculate new average rating
     const avg = (updatedReviews.reduce((sum, r) => sum + r.rating, 0) / updatedReviews.length).toFixed(1);
-    updateProfile({ rating: String(avg), points: 15 });
+    updateProfile({ rating: String(avg), points: (profile.points || 0) + 15 });
 
     setNewComment('');
     setShowReviewModal(false);
@@ -173,44 +175,6 @@ export function ProfileScreen({
           </View>
         ))}
 
-        <Text style={styles.subsectionTitle}>Earned Badges</Text>
-        <View style={styles.badgesRow}>
-          {profileBadges.map((badge) => (
-            <View key={badge.id} style={styles.badgeCard}>
-              <Text style={styles.badgeEmoji}>{badge.emoji}</Text>
-              <Text style={styles.badgeLabel}>{badge.label}</Text>
-            </View>
-          ))}
-        </View>
-
-        {/* Appearance & Theme Customization */}
-        <Text style={styles.subsectionTitle}>App Theme Mode</Text>
-        <View style={{ flexDirection: 'row', gap: 8, marginVertical: 6 }}>
-          {[
-            { id: 'light', label: '☀️ Light', bg: '#F4F2EE', text: brand.text },
-            { id: 'dark', label: '🌙 Dark', bg: '#1E202C', text: '#fff' },
-            { id: 'midnight', label: '🌌 Midnight', bg: '#0A0D1A', text: '#F59E0B' },
-          ].map((t) => (
-            <Pressable
-              key={t.id}
-              onPress={() => setTheme(t.id as any)}
-              style={[
-                styles.flexFill,
-                {
-                  backgroundColor: t.bg,
-                  paddingVertical: 10,
-                  borderRadius: 14,
-                  alignItems: 'center',
-                  borderWidth: theme === t.id ? 2 : 1,
-                  borderColor: theme === t.id ? brand.primary : brand.border,
-                },
-              ]}
-            >
-              <Text style={{ fontWeight: '800', fontSize: 13, color: t.text }}>{t.label}</Text>
-            </Pressable>
-          ))}
-        </View>
-
         <ActionRow label="Account Settings" onPress={onEditProfile} icon="settings-outline" />
         <ActionRow label="Privacy & Security" onPress={onChangePassword} icon="shield-checkmark-outline" />
         <ActionRow
@@ -276,9 +240,61 @@ export function EditProfileScreen({
 }) {
   const { profile, updateProfile } = useAppStore();
   const [localProfile, setLocalProfile] = useState(profile);
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const [loadingPic, setLoadingPic] = useState(false);
 
-  const updateField = (key: keyof UserProfile, value: string) => {
+  const updateField = (key: keyof UserProfile, value: any) => {
     setLocalProfile((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handlePickProfilePicture = async () => {
+    try {
+      setLoadingPic(true);
+      const permResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (permResult.granted === false) {
+        alert('Permission to access photo gallery is required!');
+        setLoadingPic(false);
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const selectedUri = result.assets[0].uri;
+        updateField('avatar', selectedUri);
+        setShowAvatarModal(false);
+      }
+    } catch (err) {
+      console.warn('Error picking image:', err);
+    } finally {
+      setLoadingPic(false);
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    updateProfile(localProfile);
+
+    if (profile?.id) {
+      try {
+        await updateUserProfile(profile.id, {
+          full_name: localProfile.name,
+          university: localProfile.university,
+          major: localProfile.major,
+          year: localProfile.year,
+          bio: localProfile.bio,
+          avatar_url: localProfile.avatar,
+        });
+      } catch (err) {
+        console.warn('Sync profile update error:', err);
+      }
+    }
+
+    onSave();
   };
 
   return (
@@ -289,22 +305,28 @@ export function EditProfileScreen({
             <Ionicons name="arrow-back" size={20} color={brand.text} />
           </Pressable>
           <Text style={styles.screenTitle}>Edit Profile</Text>
-          <Pressable
-            onPress={() => {
-              updateProfile(localProfile);
-              onSave();
-            }}
-            style={styles.saveChip}
-          >
+          <Pressable onPress={handleSaveProfile} style={styles.saveChip}>
             <Text style={styles.saveChipText}>Save</Text>
           </Pressable>
         </View>
 
-        <View style={styles.editAvatarWrap}>
-          <Image source={{ uri: localProfile.avatar }} style={styles.editAvatar} />
-          <View style={styles.editAvatarBadge}>
-            <Ionicons name="camera-outline" size={16} color="#fff" />
-          </View>
+        {/* Profile Avatar Display with Camera Badge */}
+        <View style={{ alignItems: 'center', marginVertical: 12 }}>
+          <Pressable
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            onPress={() => setShowAvatarModal(true)}
+            style={({ pressed }) => [styles.editAvatarWrap, pressed && { opacity: 0.8, transform: [{ scale: 0.96 }] }]}
+          >
+            <Image source={{ uri: localProfile.avatar }} style={styles.editAvatar} />
+            <View style={styles.editAvatarBadge}>
+              <Ionicons name="camera-outline" size={18} color="#fff" />
+            </View>
+          </Pressable>
+          <Pressable hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => setShowAvatarModal(true)}>
+            <Text style={{ marginTop: 8, fontSize: 13, fontWeight: '700', color: brand.primary }}>
+              Change Profile Picture
+            </Text>
+          </Pressable>
         </View>
 
         <LabelledInput
@@ -339,14 +361,89 @@ export function EditProfileScreen({
           multiline
         />
 
-        <PrimaryButton
-          label="Save Profile Changes"
-          onPress={() => {
-            updateProfile(localProfile);
-            onSave();
-          }}
-        />
+        <PrimaryButton label="Save Profile Changes" onPress={handleSaveProfile} />
       </ScrollView>
+
+      {/* Change Profile Picture Modal */}
+      <Modal visible={showAvatarModal} transparent animationType="slide">
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Change Profile Picture 📷</Text>
+              <Pressable onPress={() => setShowAvatarModal(false)}>
+                <Ionicons name="close-circle" size={26} color={brand.muted} />
+              </Pressable>
+            </View>
+
+            <Text style={styles.mutedCopySmall}>Choose how you want to update your profile photo:</Text>
+
+            {/* Option 1: Pick from Device Photos */}
+            <Pressable
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              onPress={handlePickProfilePicture}
+              style={({ pressed }) => [
+                {
+                  backgroundColor: brand.primary,
+                  paddingVertical: 12,
+                  paddingHorizontal: 16,
+                  borderRadius: 14,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  marginVertical: 8,
+                },
+                pressed && { opacity: 0.8, transform: [{ scale: 0.97 }] },
+              ]}
+            >
+              <Ionicons name="images-outline" size={20} color="#FFFFFF" />
+              <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 14 }}>
+                {loadingPic ? 'Opening Gallery...' : 'Choose Photo from Device Gallery'}
+              </Text>
+            </Pressable>
+
+            {/* Option 2: Default Facebook Silhouette */}
+            <Pressable
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              onPress={() => {
+                updateField('avatar', DEFAULT_AVATAR);
+                setShowAvatarModal(false);
+              }}
+              style={({ pressed }) => [
+                {
+                  backgroundColor: '#F3F4F6',
+                  borderWidth: 1,
+                  borderColor: '#D1D5DB',
+                  paddingVertical: 12,
+                  paddingHorizontal: 16,
+                  borderRadius: 14,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  marginBottom: 12,
+                },
+                pressed && { opacity: 0.8, transform: [{ scale: 0.97 }] },
+              ]}
+            >
+              <Ionicons name="person-circle-outline" size={20} color={brand.text} />
+              <Text style={{ color: brand.text, fontWeight: '700', fontSize: 14 }}>
+                Use Facebook Default Silhouette
+              </Text>
+            </Pressable>
+
+            {/* Option 3: Custom Photo URL Input */}
+            <LabelledInput
+              label="Or Paste Custom Image URL"
+              value={localProfile.avatar}
+              onChangeText={(val) => updateField('avatar', val)}
+              placeholder="https://example.com/my-photo.jpg"
+            />
+
+            <PrimaryButton label="Done" onPress={() => setShowAvatarModal(false)} />
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

@@ -76,7 +76,24 @@ CREATE TABLE IF NOT EXISTS public.meetup_rsvps (
     PRIMARY KEY (meetup_id, user_id)
 );
 
--- 7. MESSAGES & DISCUSSIONS TABLE
+-- 7. CHAT THREADS TABLE
+CREATE TABLE IF NOT EXISTS public.chat_threads (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title TEXT,
+    is_group BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 8. CHAT PARTICIPANTS TABLE
+CREATE TABLE IF NOT EXISTS public.chat_participants (
+    thread_id UUID REFERENCES public.chat_threads(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+    joined_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (thread_id, user_id)
+);
+
+-- 9. MESSAGES & DISCUSSIONS TABLE
 CREATE TABLE IF NOT EXISTS public.messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     thread_id TEXT NOT NULL,
@@ -85,7 +102,7 @@ CREATE TABLE IF NOT EXISTS public.messages (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 8. RECORDED LECTURES TABLE
+-- 10. RECORDED LECTURES TABLE
 CREATE TABLE IF NOT EXISTS public.recordings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title TEXT NOT NULL,
@@ -108,6 +125,8 @@ ALTER TABLE public.community_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.meetups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.meetup_rsvps ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.chat_threads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.chat_participants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.recordings ENABLE ROW LEVEL SECURITY;
 
@@ -130,6 +149,12 @@ CREATE POLICY "Users can create meetups" ON public.meetups FOR INSERT WITH CHECK
 
 CREATE POLICY "Meetup RSVPs viewable by everyone" ON public.meetup_rsvps FOR SELECT USING (true);
 CREATE POLICY "Users can RSVP to meetups" ON public.meetup_rsvps FOR ALL USING (auth.uid() = user_id);
+
+CREATE POLICY "Chat threads viewable by authenticated users" ON public.chat_threads FOR SELECT USING (true);
+CREATE POLICY "Authenticated users can create threads" ON public.chat_threads FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Participants viewable by authenticated users" ON public.chat_participants FOR SELECT USING (true);
+CREATE POLICY "Users can join chat threads" ON public.chat_participants FOR ALL USING (auth.uid() = user_id);
 
 CREATE POLICY "Messages viewable by thread members" ON public.messages FOR SELECT USING (true);
 CREATE POLICY "Authenticated users can send messages" ON public.messages FOR INSERT WITH CHECK (auth.role() = 'authenticated');

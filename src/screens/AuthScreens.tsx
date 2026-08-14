@@ -16,7 +16,7 @@ import {
   PrimaryButton,
 } from '../components/UIComponents';
 import { useAppStore } from '../context/AppStoreContext';
-import { brand } from '../data/mockData';
+import { brand, DEFAULT_AVATAR } from '../data/mockData';
 import { styles } from '../styles/appStyles';
 
 export function SplashScreen({ onDone }: { onDone: () => void }) {
@@ -196,7 +196,7 @@ export function SignupScreen({
         sessions: 0,
         communities: 1,
         streak: '1 day',
-        avatar: `https://i.pravatar.cc/120?u=${encodeURIComponent(email.trim())}`,
+        avatar: DEFAULT_AVATAR,
       });
 
       // Check if Supabase sent an email confirmation link
@@ -342,7 +342,7 @@ export function SigninScreen({
           updateProfile({
             name: data.user.user_metadata?.full_name || email.split('@')[0] || 'User',
             email: data.user.email || email,
-            avatar: `https://i.pravatar.cc/120?u=${encodeURIComponent(email)}`,
+            avatar: DEFAULT_AVATAR,
           });
         }
         setLoading(false);
@@ -351,7 +351,7 @@ export function SigninScreen({
         updateProfile({
           name: email.split('@')[0] || 'Student Learner',
           email: email.trim(),
-          avatar: `https://i.pravatar.cc/120?u=${encodeURIComponent(email.trim())}`,
+          avatar: DEFAULT_AVATAR,
         });
         setLoading(false);
         onContinue();
@@ -360,7 +360,7 @@ export function SigninScreen({
       updateProfile({
         name: email.split('@')[0] || 'Student Learner',
         email: email.trim(),
-        avatar: `https://i.pravatar.cc/120?u=${encodeURIComponent(email.trim())}`,
+        avatar: DEFAULT_AVATAR,
       });
       setLoading(false);
       onContinue();

@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Image,
   ImageBackground,
@@ -188,21 +188,47 @@ export function LeaderboardScreen({ onBack }: { onBack: () => void }) {
 }
 
 export function RecordingsScreen({ onBack }: { onBack: () => void }) {
-  const { updateProfile } = useAppStore();
+  const { profile, updateProfile } = useAppStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [selectedVideo, setSelectedVideo] = useState<RecordedLecture | null>(null);
   const [isPlaying, setIsPlaying] = useState(true);
   const [speed, setSpeed] = useState<'1.0x' | '1.25x' | '1.5x' | '2.0x'>('1.0x');
+  const [liveRecordings, setLiveRecordings] = useState<RecordedLecture[]>(sampleRecordings);
   const [viewCounts, setViewCounts] = useState<Record<string, number>>({
     'rec-1': 1420,
     'rec-2': 980,
     'rec-3': 2100,
+    'rec-4': 760,
   });
 
-  const categories = ['All', 'Mathematics', 'Computer Science', 'Physics'];
+  const categories = ['All', 'Mathematics', 'Computer Science', 'Physics', 'Chemistry'];
 
-  const filteredRecordings = sampleRecordings.filter((rec) => {
+  useEffect(() => {
+    async function loadLiveRecordings() {
+      try {
+        const { getRecordings } = await import('../lib/supabase');
+        const dbRecordings = await getRecordings();
+        if (dbRecordings && dbRecordings.length > 0) {
+          const mapped: RecordedLecture[] = dbRecordings.map((r: any) => ({
+            id: r.id,
+            title: r.title,
+            tutor: r.tutor_name || 'Campus Tutor',
+            category: r.category,
+            duration: r.duration,
+            views: r.views || 100,
+            thumbnail: r.thumbnail_url || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=800&q=80',
+          }));
+          setLiveRecordings(mapped);
+        }
+      } catch (err) {
+        console.warn('Recordings load error:', err);
+      }
+    }
+    loadLiveRecordings();
+  }, []);
+
+  const filteredRecordings = liveRecordings.filter((rec) => {
     const matchesCategory = selectedCategory === 'All' || rec.category.toLowerCase().includes(selectedCategory.toLowerCase());
     const matchesSearch = !searchQuery.trim() || rec.title.toLowerCase().includes(searchQuery.toLowerCase()) || rec.tutor.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesCategory && matchesSearch;
@@ -215,7 +241,7 @@ export function RecordingsScreen({ onBack }: { onBack: () => void }) {
       ...prev,
       [rec.id]: (prev[rec.id] || rec.views) + 1,
     }));
-    updateProfile({ points: 25 });
+    updateProfile({ points: (profile.points || 0) + 25 });
   };
 
   const sampleChapters = [
