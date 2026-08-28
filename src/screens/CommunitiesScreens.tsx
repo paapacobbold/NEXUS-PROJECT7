@@ -255,7 +255,8 @@ export function CommunityDetailScreen({
       }
       setPostsLoading(false);
 
-      unsubscribe = subscribeToCommunityPosts(community.id, (incoming) => {
+      unsubscribe = subscribeToCommunityPosts(community.id, (incoming, authorId) => {
+        if (authorId && authorId === profile.id) return;
         setPostsFeedList((prev) =>
           prev.some((p) => p.id === incoming.id)
             ? prev
@@ -269,7 +270,7 @@ export function CommunityDetailScreen({
       active = false;
       unsubscribe?.();
     };
-  }, [community.id]);
+  }, [community.id, profile.id]);
 
   const defaultResources = [
     { id: 'res-1', title: 'Calculus_III_Final_Formula_Sheet.pdf', size: '1.4 MB', category: 'Formula Sheet' },
@@ -317,8 +318,8 @@ export function CommunityDetailScreen({
           prev.map((p) => (p.id === optimisticId ? { ...p, id: data.id } : p))
         );
       }
-      await awardPoints(30, 'post_created', data?.id);
-      updateProfile({ points: (profile.points || 0) + 30 });
+      const earned = await awardPoints('post_created', data?.id);
+      if (earned > 0) updateProfile({ points: (profile.points || 0) + earned });
       tapMedium();
     } catch (err: any) {
       // Roll the optimistic post back so the feed never shows a post that
@@ -372,8 +373,8 @@ export function CommunityDetailScreen({
         ...prev,
       ]);
 
-      await awardPoints(50, 'resource_shared');
-      updateProfile({ points: (profile.points || 0) + 50 });
+      const earned = await awardPoints('resource_shared');
+      if (earned > 0) updateProfile({ points: (profile.points || 0) + earned });
       toast.show(`Shared ${doc.name || 'the file'} with the community`);
     } catch (err: any) {
       toast.show(err?.message || 'Upload failed. Check your connection and try again.', 'error');
@@ -422,6 +423,13 @@ export function CommunityDetailScreen({
           </View>
 
           {/* Create New Community Post Box */}
+          {!community.joined ? (
+            <View style={{ backgroundColor: '#FFFFFF', padding: 14, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 12 }}>
+              <Text style={{ fontSize: 13, color: brand.muted }}>
+                Join this community to start a discussion or ask a question.
+              </Text>
+            </View>
+          ) : (
           <View style={{ backgroundColor: '#FFFFFF', padding: 14, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 12 }}>
             <Text style={{ fontSize: 14, fontWeight: '700', color: brand.text, marginBottom: 8 }}>
               + Start a Discussion / Ask Question (+30 XP)
@@ -449,16 +457,21 @@ export function CommunityDetailScreen({
                 pressed && { opacity: 0.8, transform: [{ scale: 0.97 }] },
               ]}
             >
-              <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 13 }}>Post to Group</Text>
+              <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 13 }}>
+                {postSubmitting ? 'Posting...' : 'Post to Group'}
+              </Text>
             </Pressable>
           </View>
+          )}
 
           <Pressable hitSlop={defaultHitSlop} onPress={() => setShowResources(true)} style={({ pressed }) => [[styles.sharePrompt, { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }], pressed && { opacity: 0.8 }]}>
             <Ionicons name="document-attach-outline" size={20} color={brand.primary} />
             <Text style={{ fontSize: 13, fontWeight: '700', color: brand.primary }}>Download Study Materials & PDFs (+20 XP)</Text>
           </Pressable>
 
-          {postsFeedList.length === 0 ? (
+          {postsLoading ? (
+            <SkeletonList count={2} lines={3} />
+          ) : postsFeedList.length === 0 ? (
             <View style={{ backgroundColor: '#FFFFFF', padding: 24, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', alignItems: 'center', marginTop: 12 }}>
               <Ionicons name="chatbubbles-outline" size={36} color={brand.muted} />
               <Text style={{ fontSize: 15, fontWeight: '700', color: brand.text, marginTop: 8, textAlign: 'center' }}>
@@ -512,6 +525,7 @@ export function CommunityDetailScreen({
             <Pressable
               hitSlop={defaultHitSlop}
               onPress={handlePickDocument}
+              disabled={uploadingResource}
               style={({ pressed }) => [
                 {
                   backgroundColor: '#EFF6FF',
