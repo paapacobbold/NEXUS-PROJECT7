@@ -122,15 +122,6 @@ export const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: brand.secondary,
   },
-  splashSafeArea: {
-    flex: 1,
-    backgroundColor: brand.primary,
-  },
-  splashContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   splashRippleOne: {
     position: 'absolute',
     width: 220,
@@ -198,9 +189,10 @@ export const styles = StyleSheet.create({
     resizeMode: 'cover',
   },
   onboardingTopRow: {
-    alignItems: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 18,
-    paddingTop: 10,
   },
   skipPill: {
     paddingHorizontal: 14,
@@ -213,11 +205,12 @@ export const styles = StyleSheet.create({
     fontWeight: '700',
   },
   onboardingFade: {
-    height: 180,
+    height: 200,
   },
   onboardingBody: {
+    flex: 1,
     paddingHorizontal: 22,
-    paddingTop: 8,
+    paddingTop: 6,
     gap: 12,
   },
   dotRow: {
@@ -263,10 +256,9 @@ export const styles = StyleSheet.create({
   },
   welcomeTitle: {
     color: '#fff',
-    fontSize: 42,
-    lineHeight: 46,
+    fontSize: 38,
+    lineHeight: 44,
     fontWeight: '800',
-    marginBottom: 12,
   },
   welcomeText: {
     color: 'rgba(255,255,255,0.9)',
@@ -290,7 +282,13 @@ export const styles = StyleSheet.create({
     backgroundColor: brand.primary,
     borderRadius: 18,
     paddingVertical: 18,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  primaryButtonDisabled: {
+    opacity: 0.55,
   },
   primaryButtonText: {
     color: '#fff',
@@ -398,6 +396,143 @@ export const styles = StyleSheet.create({
   helperLink: {
     color: brand.primary,
     fontWeight: '800',
+  },
+
+  /* ---------- Auth flow (splash / onboarding / welcome / signup / signin) ----------
+     These screens are full-bleed: the root View carries no safe-area padding so
+     background art runs under the status bar and the bottom nav bar. Insets are
+     applied to the content instead, via useSafeAreaInsets(). */
+  authScreen: {
+    flex: 1,
+    backgroundColor: brand.secondary,
+  },
+  authScreenDark: {
+    flex: 1,
+    backgroundColor: '#070918',
+  },
+  splashRoot: {
+    flex: 1,
+    backgroundColor: brand.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  splashHint: {
+    position: 'absolute',
+    alignSelf: 'center',
+    color: 'rgba(255,255,255,0.70)',
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0.4,
+  },
+  onboardingBackPill: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(44,44,44,0.28)',
+  },
+  onboardingCopy: {
+    color: '#5A5A66',
+    fontSize: 16,
+    lineHeight: 24,
+  },
+  onboardingCta: {
+    marginTop: 'auto',
+  },
+  welcomeActions: {
+    marginTop: 'auto',
+    paddingHorizontal: 24,
+    gap: 12,
+  },
+  welcomeTagline: {
+    color: 'rgba(255,255,255,0.86)',
+    fontSize: 16,
+    lineHeight: 24,
+  },
+  welcomeButtons: {
+    marginTop: 10,
+    gap: 12,
+  },
+  welcomeTerms: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 12,
+    lineHeight: 17,
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  outlineButtonOnDark: {
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.55)',
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderRadius: 18,
+    paddingVertical: 18,
+    alignItems: 'center',
+  },
+  outlineButtonTextOnDark: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  authErrorBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: '#FDECEA',
+    borderColor: '#F5C6C2',
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  authErrorText: {
+    flex: 1,
+    color: '#8C2F27',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
+  },
+  verifyCard: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#BFDBFE',
+    borderWidth: 1,
+    padding: 18,
+    borderRadius: 18,
+    gap: 10,
+    marginVertical: 10,
+  },
+  verifyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  verifyTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: brand.text,
+    flex: 1,
+  },
+  verifyBody: {
+    fontSize: 13,
+    color: brand.text,
+    lineHeight: 19,
+  },
+  inputWrap: {
+    justifyContent: 'center',
+  },
+  inputLight: {
+    borderWidth: 1,
+  },
+  inputWithAction: {
+    paddingRight: 52,
+  },
+  inputAction: {
+    position: 'absolute',
+    right: 14,
+    height: 32,
+    width: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   mainShell: {
     flex: 1,

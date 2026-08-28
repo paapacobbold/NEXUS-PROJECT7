@@ -1,11 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
+import React, { useState } from 'react';
 import {
+  ActivityIndicator,
   Animated,
   Image,
   Pressable,
   Text,
   TextInput,
+  TextInputProps,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,37 +21,62 @@ export function HeaderBar({
   title,
   onBack,
   rightElement,
+  light,
 }: {
   title: string;
   onBack: () => void;
   rightElement?: React.ReactNode;
+  /** Pin to the light pre-auth palette instead of following the app theme. */
+  light?: boolean;
 }) {
   const colors = useThemeColors();
+  const headerText = light ? brand.text : colors.text;
   return (
     <View style={styles.headerBar}>
       <Pressable
         onPress={onBack}
         hitSlop={defaultHitSlop}
+        accessibilityRole="button"
+        accessibilityLabel="Go back"
         style={({ pressed }) => [styles.backButton, pressed && { opacity: 0.7, transform: [{ scale: 0.94 }] }]}
       >
-        <Ionicons name="arrow-back" size={20} color={colors.text} />
+        <Ionicons name="arrow-back" size={20} color={headerText} />
       </Pressable>
-      <Text style={[styles.headerTitle, { color: colors.text }]}>{title}</Text>
+      <Text style={[styles.headerTitle, { color: headerText }]}>{title}</Text>
       {rightElement ? <View style={{ marginLeft: 'auto' }}>{rightElement}</View> : null}
     </View>
   );
 }
 
-export function PrimaryButton({ label, onPress }: { label: string; onPress: () => void }) {
+export function PrimaryButton({
+  label,
+  onPress,
+  loading = false,
+  disabled = false,
+}: {
+  label: string;
+  onPress: () => void;
+  /** Shows a spinner and blocks repeat presses while an async action is in flight. */
+  loading?: boolean;
+  disabled?: boolean;
+}) {
+  const blocked = loading || disabled;
   return (
     <Pressable
       onPress={onPress}
+      disabled={blocked}
       hitSlop={defaultHitSlop}
-      style={({ pressed }) => [styles.primaryButton, pressed && { opacity: 0.82, transform: [{ scale: 0.97 }] }]}
+      style={({ pressed }) => [
+        styles.primaryButton,
+        blocked && styles.primaryButtonDisabled,
+        pressed && !blocked && { opacity: 0.82, transform: [{ scale: 0.97 }] },
+      ]}
       accessible={true}
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={{ disabled: blocked, busy: loading }}
     >
+      {loading ? <ActivityIndicator size="small" color="#fff" /> : null}
       <Text style={styles.primaryButtonText}>{label}</Text>
     </Pressable>
   );
@@ -110,6 +137,12 @@ export function LabelledInput({
   secureTextEntry,
   multiline,
   keyboardType,
+  light,
+  autoCapitalize,
+  autoComplete,
+  textContentType,
+  returnKeyType,
+  onSubmitEditing,
 }: {
   label: string;
   value: string;
@@ -118,25 +151,60 @@ export function LabelledInput({
   secureTextEntry?: boolean;
   multiline?: boolean;
   keyboardType?: 'default' | 'email-address';
+  /** Pin to the light pre-auth palette instead of following the app theme. */
+  light?: boolean;
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+  autoComplete?: TextInputProps['autoComplete'];
+  textContentType?: TextInputProps['textContentType'];
+  returnKeyType?: TextInputProps['returnKeyType'];
+  onSubmitEditing?: TextInputProps['onSubmitEditing'];
 }) {
   const colors = useThemeColors();
+  const [revealed, setRevealed] = useState(false);
+  const isSecure = Boolean(secureTextEntry);
+
+  const palette = light
+    ? { text: brand.text, muted: brand.muted, inputBg: '#ECE7E0', border: brand.border }
+    : { text: colors.text, muted: colors.muted, inputBg: colors.inputBg, border: colors.border };
+
   return (
     <View style={styles.inputGroup}>
-      <Text style={[styles.inputLabel, { color: colors.text }]}>{label}</Text>
-      <TextInput
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={colors.muted}
-        secureTextEntry={secureTextEntry}
-        multiline={multiline}
-        keyboardType={keyboardType}
-        style={[
-          styles.input,
-          { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border },
-          multiline ? styles.inputMultiline : undefined,
-        ]}
-      />
+      <Text style={[styles.inputLabel, { color: palette.text }]}>{label}</Text>
+      <View style={styles.inputWrap}>
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={palette.muted}
+          secureTextEntry={isSecure && !revealed}
+          multiline={multiline}
+          keyboardType={keyboardType}
+          autoCapitalize={autoCapitalize}
+          autoCorrect={autoCapitalize === 'none' ? false : undefined}
+          autoComplete={autoComplete}
+          textContentType={textContentType}
+          returnKeyType={returnKeyType}
+          onSubmitEditing={onSubmitEditing}
+          style={[
+            styles.input,
+            light ? styles.inputLight : undefined,
+            { backgroundColor: palette.inputBg, color: palette.text, borderColor: palette.border },
+            multiline ? styles.inputMultiline : undefined,
+            isSecure ? styles.inputWithAction : undefined,
+          ]}
+        />
+        {isSecure ? (
+          <Pressable
+            onPress={() => setRevealed((prev) => !prev)}
+            hitSlop={defaultHitSlop}
+            accessibilityRole="button"
+            accessibilityLabel={revealed ? 'Hide password' : 'Show password'}
+            style={styles.inputAction}
+          >
+            <Ionicons name={revealed ? 'eye-off-outline' : 'eye-outline'} size={20} color={palette.muted} />
+          </Pressable>
+        ) : null}
+      </View>
     </View>
   );
 }

@@ -7,7 +7,6 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "scheme": "nexus-mobile",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.nexus.learningcommons.mobile",
@@ -43,7 +42,9 @@
         {
           "cameraPermission": "Allow NEXUS Learning Commons to access your camera for live study session video streams."
         }
-      ]
+      ],
+      "expo-status-bar",
+      "expo-font"
     ]
   }
 }
