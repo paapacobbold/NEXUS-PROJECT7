@@ -9,10 +9,10 @@ import {
   Modal,
   Pressable,
   ScrollView,
-  Text,
   TextInput,
   View,
 } from 'react-native';
+import { Text } from '../components/Typography';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Avatar,
@@ -24,6 +24,9 @@ import {
   PrimaryButton,
   PrimarySmallButton,
 } from '../components/UIComponents';
+import { useRefreshControl } from '../components/States';
+import { useToast } from '../components/Toast';
+import { tapMedium } from '../lib/haptics';
 import { useAppStore } from '../context/AppStoreContext';
 import { brand, DEFAULT_AVATAR, InPersonMeetup, liveSession, UserProfile } from '../data/mockData';
 import { fetchAllProfiles, getMessages, sendSupabaseMessage, subscribeToThreadMessages } from '../lib/supabase';
@@ -44,9 +47,24 @@ export function SessionsScreen({
 }) {
   const { sessionsList, meetupsList, toggleRSVPMeetup } = useAppStore();
   const [selectedMeetupMap, setSelectedMeetupMap] = useState<InPersonMeetup | null>(null);
+  const refreshControl = useRefreshControl();
+  const toast = useToast();
+
+  const handleRSVP = (meetup: InPersonMeetup) => {
+    tapMedium();
+    toggleRSVPMeetup(meetup.id);
+    toast.show(
+      meetup.rsvpStatus ? `Cancelled RSVP for ${meetup.title}` : `You're going to ${meetup.title}`,
+      meetup.rsvpStatus ? 'info' : 'success'
+    );
+  };
 
   return (
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.screenContent}>
+    <ScrollView
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={styles.screenContent}
+      refreshControl={refreshControl}
+    >
       <View style={styles.screenHeaderRow}>
         <Text style={styles.screenTitle}>Sessions & Meetups</Text>
         <IconButton icon="options-outline" onPress={onOpenFilters} />
@@ -115,7 +133,7 @@ export function SessionsScreen({
             </Pressable>
 
             <Pressable
-              onPress={() => toggleRSVPMeetup(meetup.id)}
+              onPress={() => handleRSVP(meetup)}
               style={{ backgroundColor: meetup.rsvpStatus ? '#D9F4DE' : brand.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 }}
             >
               <Text style={{ fontSize: 12, fontWeight: '700', color: meetup.rsvpStatus ? '#2F8B4E' : '#fff' }}>
@@ -172,7 +190,7 @@ export function SessionsScreen({
               <PrimaryButton
                 label={selectedMeetupMap.rsvpStatus ? '✓ Going (RSVP Confirmed)' : 'RSVP to Attend (+50 Pts)'}
                 onPress={() => {
-                  toggleRSVPMeetup(selectedMeetupMap.id);
+                  handleRSVP(selectedMeetupMap);
                   setSelectedMeetupMap(null);
                 }}
               />

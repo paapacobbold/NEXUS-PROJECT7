@@ -6,10 +6,10 @@ import {
   Modal,
   Pressable,
   ScrollView,
-  Text,
   TextInput,
   View,
 } from 'react-native';
+import { Text } from '../components/Typography';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Avatar,
@@ -17,6 +17,7 @@ import {
   Pill,
   PrimaryButton,
 } from '../components/UIComponents';
+import { AppImage } from '../components/AppImage';
 import { FilterKey, useAppStore } from '../context/AppStoreContext';
 import { brand, filterSections, RecordedLecture, sampleLeaderboard, sampleRecordings } from '../data/mockData';
 import { styles } from '../styles/appStyles';
@@ -278,7 +279,7 @@ export function RecordingsScreen({ onBack }: { onBack: () => void }) {
         {filteredRecordings.map((rec) => (
           <View key={rec.id} style={[styles.largeCommunityCard, { marginBottom: 14 }]}>
             <Pressable onPress={() => handleOpenLecture(rec)}>
-              <Image source={{ uri: rec.thumbnail }} style={{ width: '100%', height: 140, borderRadius: 16 }} />
+              <AppImage source={{ uri: rec.thumbnail }} style={{ width: '100%', height: 140, borderRadius: 16 }} />
               <View style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.25)' }}>
                 <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' }}>
                   <Ionicons name="play" size={22} color="#fff" />

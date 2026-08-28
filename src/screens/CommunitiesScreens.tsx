@@ -9,10 +9,10 @@ import {
   Modal,
   Pressable,
   ScrollView,
-  Text,
   TextInput,
   View,
 } from 'react-native';
+import { Text } from '../components/Typography';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Avatar,
@@ -24,6 +24,10 @@ import {
   PrimaryButton,
   PrimarySmallButton,
 } from '../components/UIComponents';
+import { AppImage } from '../components/AppImage';
+import { EmptyState, SkeletonList, useRefreshControl } from '../components/States';
+import { useToast } from '../components/Toast';
+import { tapMedium } from '../lib/haptics';
 import { useAppStore } from '../context/AppStoreContext';
 import { brand, CommunityItem, DEFAULT_AVATAR } from '../data/mockData';
 import { styles } from '../styles/appStyles';
@@ -39,7 +43,15 @@ export function CommunitiesScreen({
   onOpenCommunity?: () => void;
   onCreateCommunity: () => void;
 }) {
-  const { communitiesList, toggleJoinCommunity } = useAppStore();
+  const { communitiesList, toggleJoinCommunity, isLoadingData } = useAppStore();
+  const refreshControl = useRefreshControl();
+  const toast = useToast();
+
+  const handleToggleJoin = (id: string, name: string, joined: boolean) => {
+    tapMedium();
+    toggleJoinCommunity(id);
+    toast.show(joined ? `Left ${name}` : `Joined ${name}`, joined ? 'info' : 'success');
+  };
   const [activeFilter, setActiveFilter] = useState<'all' | 'joined' | 'stem' | 'humanities'>('all');
   const handleOpen = onOpenDetail || onOpenCommunity || (() => {});
 
@@ -80,6 +92,7 @@ export function CommunitiesScreen({
         data={filteredCommunities}
         keyExtractor={(item) => item.id}
         showsVerticalScrollIndicator={false}
+        refreshControl={refreshControl}
         ListHeaderComponent={
           <>
             <View style={styles.screenHeaderRow}>
@@ -122,15 +135,17 @@ export function CommunitiesScreen({
           </>
         }
         ListEmptyComponent={
-          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 40 }}>
-            <Ionicons name="filter-outline" size={36} color={brand.muted} />
-            <Text style={{ fontSize: 15, fontWeight: '700', color: brand.text, marginTop: 8 }}>
-              No {activeFilter.toUpperCase()} Communities Found
-            </Text>
-            <Text style={{ fontSize: 13, color: brand.muted, marginTop: 4, textAlign: 'center' }}>
-              Tap "All" or create a new community to get started!
-            </Text>
-          </View>
+          isLoadingData ? (
+            <SkeletonList count={4} />
+          ) : (
+            <EmptyState
+              icon="people-outline"
+              title={`No ${activeFilter} communities yet`}
+              message="Try a different filter, or start one for your course and invite your classmates."
+              actionLabel="Create a community"
+              onAction={onCreateCommunity}
+            />
+          )
         }
         renderItem={({ item }) => (
           <View style={styles.largeCommunityCard}>
@@ -142,7 +157,7 @@ export function CommunitiesScreen({
               accessibilityRole="button"
               accessibilityLabel={`View community ${item.name}`}
             >
-              <Image source={{ uri: item.image }} style={styles.largeCommunityImage} />
+              <AppImage source={{ uri: item.image }} style={styles.largeCommunityImage} />
             </Pressable>
             <View style={styles.cardBody}>
               <View style={styles.cardTitleRow}>
@@ -154,7 +169,7 @@ export function CommunitiesScreen({
                 </View>
                 <Pressable
                   hitSlop={defaultHitSlop}
-                  onPress={() => toggleJoinCommunity(item.id)}
+                  onPress={() => handleToggleJoin(item.id, item.name, Boolean(item.joined))}
                   style={({ pressed }) => [
                     styles.primarySmallButton,
                     item.joined ? styles.ghostSmallButton : undefined,
@@ -469,6 +484,7 @@ export function CreateCommunityScreen({
   onCreated: () => void;
 }) {
   const { addCommunity } = useAppStore();
+  const toast = useToast();
   const [name, setName] = useState('');
   const [subject, setSubject] = useState('Mathematics');
   const [description, setDescription] = useState('');
@@ -476,6 +492,7 @@ export function CreateCommunityScreen({
   const handleCreate = () => {
     if (!name.trim() || !description.trim()) return;
     addCommunity(name.trim(), subject.trim(), description.trim());
+    toast.show(`${name.trim()} created`);
     onCreated();
   };
 

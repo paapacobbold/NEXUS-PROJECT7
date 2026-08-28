@@ -7,13 +7,17 @@ import {
   Pressable,
   ScrollView,
   Switch,
-  Text,
   TextInput,
   View,
 } from 'react-native';
+import { Text } from '../components/Typography';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { AppImage } from '../components/AppImage';
+import { useToast } from '../components/Toast';
+import { notifyError } from '../lib/haptics';
 import {
   ActionRow,
+  ThemePicker,
   HeaderBar,
   LabelledInput,
   Pill,
@@ -93,7 +97,7 @@ export function ProfileScreen({
 
       <View style={styles.profileCard}>
         <View style={styles.profileTopRow}>
-          <Image source={{ uri: profile.avatar }} style={styles.profileAvatar} />
+          <AppImage source={{ uri: profile.avatar }} style={styles.profileAvatar} />
           <View style={styles.onlineDot} />
         </View>
 
@@ -175,6 +179,8 @@ export function ProfileScreen({
           </View>
         ))}
 
+        <ThemePicker />
+
         <ActionRow label="Account Settings" onPress={onEditProfile} icon="settings-outline" />
         <ActionRow label="Privacy & Security" onPress={onChangePassword} icon="shield-checkmark-outline" />
         <ActionRow
@@ -239,6 +245,7 @@ export function EditProfileScreen({
   onSave: () => void;
 }) {
   const { profile, updateProfile } = useAppStore();
+  const toast = useToast();
   const [localProfile, setLocalProfile] = useState(profile);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [loadingPic, setLoadingPic] = useState(false);
@@ -252,7 +259,8 @@ export function EditProfileScreen({
       setLoadingPic(true);
       const permResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (permResult.granted === false) {
-        alert('Permission to access photo gallery is required!');
+        notifyError();
+        toast.show('Photo library access is needed to change your picture.', 'error');
         setLoadingPic(false);
         return;
       }
@@ -317,7 +325,7 @@ export function EditProfileScreen({
             onPress={() => setShowAvatarModal(true)}
             style={({ pressed }) => [styles.editAvatarWrap, pressed && { opacity: 0.8, transform: [{ scale: 0.96 }] }]}
           >
-            <Image source={{ uri: localProfile.avatar }} style={styles.editAvatar} />
+            <AppImage source={{ uri: localProfile.avatar }} style={styles.editAvatar} />
             <View style={styles.editAvatarBadge}>
               <Ionicons name="camera-outline" size={18} color="#fff" />
             </View>

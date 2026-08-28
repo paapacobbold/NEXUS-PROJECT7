@@ -1,5 +1,14 @@
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+  Inter_800ExtraBold,
+  useFonts,
+} from '@expo-google-fonts/inter';
+import * as ExpoSplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Animated, useColorScheme, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -26,10 +35,11 @@ import { ChatListScreen, PrivateChatScreen } from './src/screens/ChatScreens';
 import { SessionsScreen, ScheduleSessionScreen, SessionLobbyScreen, CreateMeetupScreen } from './src/screens/SessionsScreens';
 import { LeaderboardScreen, RecordingsScreen, FiltersScreen } from './src/screens/SecondaryScreens';
 import { OnboardingScreen, SignupScreen, SigninScreen, SplashScreen, WelcomeScreen } from './src/screens/AuthScreens';
-import { getThemeColors, nowTime, styles } from './src/styles/appStyles';
+import { applyThemeStyles, getThemeColors, nowTime, styles } from './src/styles/appStyles';
 
 import { GlobalSearchModal } from './src/components/GlobalSearchModal';
 import { NotificationCenterModal } from './src/components/NotificationCenterModal';
+import { ToastProvider } from './src/components/Toast';
 import {
   loadCommunitiesCache,
   loadMeetupsCache,
@@ -42,6 +52,10 @@ import {
   saveProfileStorage,
   saveThemeStorage,
 } from './src/lib/storage';
+
+ExpoSplashScreen.preventAutoHideAsync().catch(() => {
+  /* already hidden, or unavailable in this runtime */
+});
 
 function ScreenTransitionContainer({ routeKey, children }: { routeKey: string; children: React.ReactNode }) {
   const fadeAnim = React.useRef(new Animated.Value(0.3)).current;
@@ -82,6 +96,20 @@ const initialFilters: FilterState = {
 
 export default function App() {
   const systemColorScheme = useColorScheme();
+
+  const [fontsLoaded] = useFonts({
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+    Inter_800ExtraBold,
+  });
+
+  useEffect(() => {
+    if (fontsLoaded) {
+      ExpoSplashScreen.hideAsync().catch(() => {});
+    }
+  }, [fontsLoaded]);
   const [stack, setStack] = useState<AppRoute[]>(['splash']);
   const [theme, setTheme] = useState<ThemeMode>('system');
   const [showGlobalSearch, setShowGlobalSearch] = useState(false);
@@ -101,9 +129,41 @@ export default function App() {
     [theme, systemColorScheme]
   );
 
+  // Rebuild the shared stylesheet for this theme before any child renders.
+  useMemo(() => applyThemeStyles(themeColors), [themeColors]);
+
   const currentRoute = stack[stack.length - 1];
   const currentThreadId = activeThreadId || (threads[0]?.id ?? 'default');
   const featuredCommunity = communitiesList[0] || initialCommunities[0];
+
+  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Shared by the initial mount fetch and pull-to-refresh.
+  const refreshCollections = useCallback(async () => {
+    try {
+      const { getCommunities, getSessions, getMeetups } = await import('./src/lib/supabase');
+
+      const liveCommunities = await getCommunities();
+      if (liveCommunities && liveCommunities.length > 0) {
+        setCommunitiesList(liveCommunities);
+        saveCommunitiesCache(liveCommunities);
+      }
+
+      const liveSessions = await getSessions();
+      if (liveSessions && liveSessions.length > 0) {
+        setSessionsList(liveSessions);
+      }
+
+      const liveMeetups = await getMeetups();
+      if (liveMeetups && liveMeetups.length > 0) {
+        setMeetupsList(liveMeetups);
+        saveMeetupsCache(liveMeetups);
+      }
+    } catch (err) {
+      console.warn('Collection refresh error:', err);
+    }
+  }, []);
 
   useEffect(() => {
     async function hydrateLocalStorage() {
@@ -133,10 +193,7 @@ export default function App() {
       try {
         const {
           supabase,
-          getCommunities,
           getUserJoinedCommunities,
-          getSessions,
-          getMeetups,
           getUserMeetupRSVPs,
           getCurrentSession,
           fetchUserProfile,
@@ -201,25 +258,7 @@ export default function App() {
           console.warn('Push notification initialization error:', err);
         }
 
-        // Fetch live communities
-        const liveCommunities = await getCommunities();
-        if (liveCommunities && liveCommunities.length > 0) {
-          setCommunitiesList(liveCommunities);
-          saveCommunitiesCache(liveCommunities);
-        }
-
-        // Fetch live sessions
-        const liveSessions = await getSessions();
-        if (liveSessions && liveSessions.length > 0) {
-          setSessionsList(liveSessions);
-        }
-
-        // Fetch live campus meetups
-        const liveMeetups = await getMeetups();
-        if (liveMeetups && liveMeetups.length > 0) {
-          setMeetupsList(liveMeetups);
-          saveMeetupsCache(liveMeetups);
-        }
+        await refreshCollections();
 
         return () => {
           authListener.subscription.unsubscribe();
@@ -229,8 +268,17 @@ export default function App() {
       }
     }
 
-    initSupabaseData();
-  }, []);
+    initSupabaseData().finally(() => setIsLoadingData(false));
+  }, [refreshCollections]);
+
+  const refreshAll = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await refreshCollections();
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [refreshCollections]);
 
   const push = (route: AppRoute) => setStack((prev) => [...prev, route]);
   const replace = (route: AppRoute) =>
@@ -403,6 +451,9 @@ export default function App() {
           })
           .catch((err) => console.warn('Supabase import warning:', err));
       },
+      isLoadingData,
+      isRefreshing,
+      refreshAll,
       meetupsList,
       toggleRSVPMeetup: (meetupId) => {
         setMeetupsList((prev) =>
@@ -595,25 +646,31 @@ export default function App() {
     }
   };
 
+  // Keep the native splash up until Inter has loaded, otherwise the first
+  // frame renders in the system font and visibly reflows.
+  if (!fontsLoaded) return null;
+
   return (
     <SafeAreaProvider>
       <AppStoreContext.Provider value={store}>
-        <StatusBar style={themeColors.statusBarStyle} />
-        <View style={[styles.appShell, { backgroundColor: themeColors.bg }]}>
-          <ScreenTransitionContainer routeKey={currentRoute}>
-            {renderRoute()}
-          </ScreenTransitionContainer>
-        </View>
-        <GlobalSearchModal
-          visible={showGlobalSearch}
-          onClose={() => setShowGlobalSearch(false)}
-          onNavigate={(route) => push(route)}
-        />
-        <NotificationCenterModal
-          visible={showNotifications}
-          onClose={() => setShowNotifications(false)}
-          onNavigate={(route) => push(route)}
-        />
+        <ToastProvider>
+          <StatusBar style={themeColors.statusBarStyle} />
+          <View style={[styles.appShell, { backgroundColor: themeColors.bg }]}>
+            <ScreenTransitionContainer routeKey={currentRoute}>
+              {renderRoute()}
+            </ScreenTransitionContainer>
+          </View>
+          <GlobalSearchModal
+            visible={showGlobalSearch}
+            onClose={() => setShowGlobalSearch(false)}
+            onNavigate={(route) => push(route)}
+          />
+          <NotificationCenterModal
+            visible={showNotifications}
+            onClose={() => setShowNotifications(false)}
+            onNavigate={(route) => push(route)}
+          />
+        </ToastProvider>
       </AppStoreContext.Provider>
     </SafeAreaProvider>
   );

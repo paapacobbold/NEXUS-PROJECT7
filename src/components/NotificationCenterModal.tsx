@@ -4,9 +4,9 @@ import {
   Modal,
   Pressable,
   ScrollView,
-  Text,
   View,
 } from 'react-native';
+import { Text } from './Typography';
 import { AppRoute } from '../context/AppStoreContext';
 import { brand } from '../data/mockData';
 import { styles } from '../styles/appStyles';

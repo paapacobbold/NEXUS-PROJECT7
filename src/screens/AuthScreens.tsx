@@ -12,13 +12,13 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   TextInput,
   TextInputProps,
   useWindowDimensions,
 
   View,
 } from 'react-native';
+import { Text } from '../components/Typography';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   HeaderBar,
@@ -656,8 +656,8 @@ export function SignupScreen({
         >
           <HeaderBar title="Create Account" onBack={handleBackStep} light />
 
-          <Text style={styles.sectionHeadline}>{stepContent.title}</Text>
-          <Text style={styles.sectionSubline}>{stepContent.subtitle}</Text>
+          <Text style={[styles.sectionHeadline, { color: brand.text }]}>{stepContent.title}</Text>
+          <Text style={[styles.sectionSubline, { color: brand.muted }]}>{stepContent.subtitle}</Text>
 
           {/* Progress Tracker */}
           <View style={{ flexDirection: 'row', gap: 6, marginVertical: 14 }}>
@@ -919,8 +919,8 @@ export function SigninScreen({
         >
           <HeaderBar title="Sign In" onBack={onBack} light />
 
-          <Text style={styles.sectionHeadline}>Welcome back</Text>
-          <Text style={styles.sectionSubline}>Sign in to access your communities and sessions.</Text>
+          <Text style={[styles.sectionHeadline, { color: brand.text }]}>Welcome back</Text>
+          <Text style={[styles.sectionSubline, { color: brand.muted }]}>Sign in to access your communities and sessions.</Text>
 
           {errorMsg ? <AuthError message={errorMsg} /> : null}
 

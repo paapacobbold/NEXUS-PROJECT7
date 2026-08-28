@@ -4,15 +4,19 @@ import {
   Image,
   Pressable,
   ScrollView,
-  Text,
   View,
 } from 'react-native';
+import { Text } from '../components/Typography';
 import {
   Avatar,
   IconButton,
   Pill,
   StatCard,
 } from '../components/UIComponents';
+import { AppImage } from '../components/AppImage';
+import { useRefreshControl } from '../components/States';
+import { useToast } from '../components/Toast';
+import { notifySuccess, tapLight, tapMedium } from '../lib/haptics';
 import { useAppStore } from '../context/AppStoreContext';
 import { brand } from '../data/mockData';
 import { styles } from '../styles/appStyles';
@@ -61,6 +65,7 @@ export function HomeScreen({
 }) {
   const { profile, updateProfile, communitiesList, sessionsList, meetupsList, toggleRSVPMeetup } = useAppStore();
   const [loggedHours, setLoggedHours] = useState(2.5);
+  const toast = useToast();
 
   const [dailyTasks, setDailyTasks] = useState([
     { id: 'task-1', title: 'Attend 1 Live Peer Session', points: 50, done: true },
@@ -84,7 +89,11 @@ export function HomeScreen({
         if (t.id === taskId) {
           const nextDone = !t.done;
           if (nextDone) {
+            notifySuccess();
+            toast.show(`+${t.points} XP · ${t.title}`);
             updateProfile({ points: (profile.points || 0) + t.points });
+          } else {
+            tapLight();
           }
           return { ...t, done: nextDone };
         }
@@ -111,9 +120,14 @@ export function HomeScreen({
   };
 
   const joinedCommunities = communitiesList.filter((c) => c.joined);
+  const refreshControl = useRefreshControl();
 
   return (
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.screenContent}>
+    <ScrollView
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={styles.screenContent}
+      refreshControl={refreshControl}
+    >
       {/* Account Greeting Header */}
       <View style={styles.topRow}>
         <View>
@@ -296,7 +310,14 @@ export function HomeScreen({
           <Text style={styles.mutedCopySmall}>📍 {meetup.location} · {meetup.dateTime}</Text>
           <Pressable
             hitSlop={hitSlop}
-            onPress={() => toggleRSVPMeetup(meetup.id)}
+            onPress={() => {
+              tapMedium();
+              toggleRSVPMeetup(meetup.id);
+              toast.show(
+                meetup.rsvpStatus ? `Cancelled RSVP for ${meetup.title}` : `You're going to ${meetup.title}`,
+                meetup.rsvpStatus ? 'info' : 'success'
+              );
+            }}
             style={({ pressed }) => [
               { marginTop: 6, alignSelf: 'flex-end', backgroundColor: meetup.rsvpStatus ? '#D9F4DE' : brand.primary, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 12 },
               pressed && { opacity: 0.75, transform: [{ scale: 0.95 }] },
@@ -325,7 +346,7 @@ export function HomeScreen({
             onPress={onOpenCommunity}
             style={({ pressed }) => [styles.communityRowCard, pressed && { opacity: 0.8, transform: [{ scale: 0.98 }] }]}
           >
-            <Image source={{ uri: community.image }} style={styles.communityThumb} />
+            <AppImage source={{ uri: community.image }} style={styles.communityThumb} />
             <View style={styles.flexFill}>
               <Text style={styles.communityName}>{community.name}</Text>
               <Text style={styles.mutedCopySmall}>{community.members} members · {community.subject}</Text>

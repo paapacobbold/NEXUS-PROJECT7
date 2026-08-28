@@ -4,6 +4,9 @@ import { GlobalSearchModal } from '../components/GlobalSearchModal';
 import { AppStoreContext, AppStore } from '../context/AppStoreContext';
 
 const mockAppStore: AppStore = {
+  isLoadingData: false,
+  isRefreshing: false,
+  refreshAll: jest.fn(),
   theme: 'light',
   setTheme: jest.fn(),
   profile: {

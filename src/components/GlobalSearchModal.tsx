@@ -6,10 +6,10 @@ import {
   Modal,
   Pressable,
   ScrollView,
-  Text,
   TextInput,
   View,
 } from 'react-native';
+import { Text } from './Typography';
 import { AppRoute, useAppStore } from '../context/AppStoreContext';
 import { brand, sampleLeaderboard, sampleRecordings } from '../data/mockData';
 import { styles, useThemeColors } from '../styles/appStyles';

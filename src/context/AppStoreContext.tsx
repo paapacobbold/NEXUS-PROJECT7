@@ -59,6 +59,12 @@ export type AppStore = {
   meetupsList: InPersonMeetup[];
   toggleRSVPMeetup: (meetupId: string) => void;
   addMeetup: (title: string, location: string, dateTime: string) => void;
+  /** True until the first remote fetch settles — drives skeleton placeholders. */
+  isLoadingData: boolean;
+  /** True while a pull-to-refresh is in flight. */
+  isRefreshing: boolean;
+  /** Re-fetches communities, sessions and meetups. Wired to RefreshControl. */
+  refreshAll: () => Promise<void>;
 };
 
 export const AppStoreContext = createContext<AppStore | null>(null);
