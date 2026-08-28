@@ -53,6 +53,15 @@ function TestStoreProvider({ children }: { children: React.ReactNode }) {
   const [threads, setThreads] = useState(threadPreviews);
 
   const value: AppStore = {
+    isLoadingData: false,
+    isRefreshing: false,
+    refreshAll: async () => {},
+    isBootstrapping: false,
+    isAuthenticated: true,
+    markAuthenticated: () => {},
+    signOut: async () => {},
+    hasSeenOnboarding: true,
+    markOnboardingSeen: () => {},
     theme,
     setTheme,
     profile,

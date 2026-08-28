@@ -53,6 +53,8 @@ describe('Storage Service', () => {
       year: '3rd Year',
       bio: 'Student at Nexus',
       skills: ['React Native', 'TypeScript'],
+      interests: [],
+      skillLevel: 'Beginner',
       rating: '4.9',
       points: 350,
       sessions: 12,

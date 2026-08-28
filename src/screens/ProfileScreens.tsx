@@ -7,13 +7,18 @@ import {
   Pressable,
   ScrollView,
   Switch,
-  Text,
   TextInput,
   View,
 } from 'react-native';
+import { Text } from '../components/Typography';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { AppImage } from '../components/AppImage';
+import { uploadFile } from '../lib/uploads';
+import { useToast } from '../components/Toast';
+import { notifyError } from '../lib/haptics';
 import {
   ActionRow,
+  ThemePicker,
   HeaderBar,
   LabelledInput,
   Pill,
@@ -93,7 +98,7 @@ export function ProfileScreen({
 
       <View style={styles.profileCard}>
         <View style={styles.profileTopRow}>
-          <Image source={{ uri: profile.avatar }} style={styles.profileAvatar} />
+          <AppImage source={{ uri: profile.avatar }} style={styles.profileAvatar} />
           <View style={styles.onlineDot} />
         </View>
 
@@ -112,7 +117,7 @@ export function ProfileScreen({
 
             <View style={[styles.levelBadgeChip, { marginTop: 6 }]}>
               <Text style={styles.levelBadgeText}>
-                {profile.points >= 1000 ? 'Level 5: Campus Legend 🏆' : profile.points >= 750 ? 'Level 4: Scholar 🎓' : profile.points >= 500 ? 'Level 3: Master Peer ⭐' : profile.points >= 250 ? 'Level 2: Study Mentor ⚡' : 'Level 1: Academic Novice 📘'}
+                {profile.points >= 1000 ? 'Level 5: Campus Legend' : profile.points >= 750 ? 'Level 4: Scholar' : profile.points >= 500 ? 'Level 3: Master Peer' : profile.points >= 250 ? 'Level 2: Study Mentor' : 'Level 1: Academic Novice'}
               </Text>
             </View>
           </View>
@@ -174,6 +179,8 @@ export function ProfileScreen({
             <Text style={{ fontSize: 13, color: brand.text, marginTop: 2 }}>{rev.comment}</Text>
           </View>
         ))}
+
+        <ThemePicker />
 
         <ActionRow label="Account Settings" onPress={onEditProfile} icon="settings-outline" />
         <ActionRow label="Privacy & Security" onPress={onChangePassword} icon="shield-checkmark-outline" />
@@ -239,6 +246,7 @@ export function EditProfileScreen({
   onSave: () => void;
 }) {
   const { profile, updateProfile } = useAppStore();
+  const toast = useToast();
   const [localProfile, setLocalProfile] = useState(profile);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [loadingPic, setLoadingPic] = useState(false);
@@ -252,7 +260,8 @@ export function EditProfileScreen({
       setLoadingPic(true);
       const permResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (permResult.granted === false) {
-        alert('Permission to access photo gallery is required!');
+        notifyError();
+        toast.show('Photo library access is needed to change your picture.', 'error');
         setLoadingPic(false);
         return;
       }
@@ -266,11 +275,28 @@ export function EditProfileScreen({
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const selectedUri = result.assets[0].uri;
+
+        // Show the local file straight away, then swap in the hosted URL. The
+        // local file:// URI is device-only, so persisting it produced a broken
+        // avatar everywhere else.
         updateField('avatar', selectedUri);
         setShowAvatarModal(false);
+
+        const { url } = await uploadFile({
+          bucket: 'avatars',
+          userId: profile.id || '',
+          uri: selectedUri,
+          contentType: 'image/jpeg',
+          fileName: 'avatar.jpg',
+        });
+        updateField('avatar', url);
+        toast.show('Profile picture updated');
       }
     } catch (err) {
-      console.warn('Error picking image:', err);
+      toast.show(
+        err instanceof Error ? err.message : 'Could not update your picture. Try again.',
+        'error'
+      );
     } finally {
       setLoadingPic(false);
     }
@@ -317,7 +343,7 @@ export function EditProfileScreen({
             onPress={() => setShowAvatarModal(true)}
             style={({ pressed }) => [styles.editAvatarWrap, pressed && { opacity: 0.8, transform: [{ scale: 0.96 }] }]}
           >
-            <Image source={{ uri: localProfile.avatar }} style={styles.editAvatar} />
+            <AppImage source={{ uri: localProfile.avatar }} style={styles.editAvatar} />
             <View style={styles.editAvatarBadge}>
               <Ionicons name="camera-outline" size={18} color="#fff" />
             </View>
@@ -369,7 +395,7 @@ export function EditProfileScreen({
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Change Profile Picture 📷</Text>
+              <Text style={styles.modalTitle}>Change Profile Picture</Text>
               <Pressable onPress={() => setShowAvatarModal(false)}>
                 <Ionicons name="close-circle" size={26} color={brand.muted} />
               </Pressable>

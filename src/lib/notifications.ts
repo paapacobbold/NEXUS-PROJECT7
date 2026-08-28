@@ -40,7 +40,13 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
 
     const pushTokenData = await Notifications.getExpoPushTokenAsync();
     token = pushTokenData.data;
-    console.log('Registered Expo Push Token:', token);
+
+    // Without this the token never leaves the device and no server can send to
+    // it — which is why remote notifications never arrived.
+    if (token) {
+      const { registerDeviceToken } = await import('./supabase');
+      await registerDeviceToken(token, Platform.OS);
+    }
   } catch (err) {
     console.warn('Error fetching Expo Push Token:', err);
   }

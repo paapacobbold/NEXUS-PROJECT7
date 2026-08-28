@@ -7,10 +7,10 @@ import {
   Modal,
   Platform,
   Pressable,
-  Text,
   TextInput,
   View,
 } from 'react-native';
+import { Text } from '../components/Typography';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Avatar,
@@ -18,6 +18,7 @@ import {
   IconButton,
   SearchInput,
 } from '../components/UIComponents';
+import { EmptyState, useRefreshControl } from '../components/States';
 import { useAppStore } from '../context/AppStoreContext';
 import { brand, MessageItem, ThreadPreview, UserProfile } from '../data/mockData';
 import {
@@ -40,6 +41,7 @@ export function ChatListScreen({
   onSelectThread?: (threadId: string) => void;
 }) {
   const { threads, profile } = useAppStore();
+  const refreshControl = useRefreshControl();
   const [liveThreads, setLiveThreads] = useState<ThreadPreview[]>(threads);
   const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [userList, setUserList] = useState<UserProfile[]>([]);
@@ -147,6 +149,14 @@ export function ChatListScreen({
           data={displayThreads}
           keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
+          refreshControl={refreshControl}
+          ListEmptyComponent={
+            <EmptyState
+              icon="chatbubbles-outline"
+              title="No conversations yet"
+              message="Start a chat with a peer or tutor and it will show up here."
+            />
+          }
           renderItem={({ item }) => (
             <Pressable
               hitSlop={hitSlop}

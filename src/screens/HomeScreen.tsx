@@ -1,18 +1,22 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Feather, Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
   Image,
   Pressable,
   ScrollView,
-  Text,
   View,
 } from 'react-native';
+import { Text } from '../components/Typography';
 import {
   Avatar,
   IconButton,
   Pill,
   StatCard,
 } from '../components/UIComponents';
+import { AppImage } from '../components/AppImage';
+import { useRefreshControl } from '../components/States';
+import { useToast } from '../components/Toast';
+import { notifySuccess, tapLight, tapMedium } from '../lib/haptics';
 import { useAppStore } from '../context/AppStoreContext';
 import { brand } from '../data/mockData';
 import { styles } from '../styles/appStyles';
@@ -61,6 +65,7 @@ export function HomeScreen({
 }) {
   const { profile, updateProfile, communitiesList, sessionsList, meetupsList, toggleRSVPMeetup } = useAppStore();
   const [loggedHours, setLoggedHours] = useState(2.5);
+  const toast = useToast();
 
   const [dailyTasks, setDailyTasks] = useState([
     { id: 'task-1', title: 'Attend 1 Live Peer Session', points: 50, done: true },
@@ -84,7 +89,11 @@ export function HomeScreen({
         if (t.id === taskId) {
           const nextDone = !t.done;
           if (nextDone) {
+            notifySuccess();
+            toast.show(`+${t.points} XP · ${t.title}`);
             updateProfile({ points: (profile.points || 0) + t.points });
+          } else {
+            tapLight();
           }
           return { ...t, done: nextDone };
         }
@@ -111,14 +120,19 @@ export function HomeScreen({
   };
 
   const joinedCommunities = communitiesList.filter((c) => c.joined);
+  const refreshControl = useRefreshControl();
 
   return (
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.screenContent}>
+    <ScrollView
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={styles.screenContent}
+      refreshControl={refreshControl}
+    >
       {/* Account Greeting Header */}
       <View style={styles.topRow}>
         <View>
           <Text style={styles.mutedCopy}>Good afternoon,</Text>
-          <Text style={styles.titleLarge}>{profile.name.split(' ')[0] || 'Learner'} 👋</Text>
+          <Text style={styles.titleLarge}>{profile.name.split(' ')[0] || 'Learner'}</Text>
         </View>
         <View style={styles.topActionRow}>
           <IconButton icon="search" onPress={onOpenSearch || onOpenFilters || (() => {})} />
@@ -139,7 +153,7 @@ export function HomeScreen({
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Ionicons name="flame" size={22} color="#E07038" />
-            <Text style={{ fontSize: 15, fontWeight: '800', color: brand.text }}>🔥 {profile.streak || '5-Day Active Streak'}</Text>
+            <Text style={{ fontSize: 15, fontWeight: '800', color: brand.text }}>{profile.streak || '5-Day Active Streak'}</Text>
           </View>
           <Pill label={`${loggedHours.toFixed(1)} / 3.0 Hrs Today`} compact tint="#EBF7EE" textColor="#2F8B4E" />
         </View>
@@ -287,23 +301,33 @@ export function HomeScreen({
       {meetupsList.map((meetup) => (
         <View key={meetup.id} style={[styles.communityRowCard, { flexDirection: 'column', alignItems: 'flex-start', padding: 14, gap: 6 }]}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, flexShrink: 1 }}>
               <Ionicons name="location" size={16} color={brand.primary} />
-              <Text style={styles.communityName}>{meetup.title}</Text>
+              <Text numberOfLines={1} style={[styles.communityName, { flexShrink: 1 }]}>{meetup.title}</Text>
             </View>
             <Pill label={`${meetup.rsvpCount} Attending`} compact />
           </View>
-          <Text style={styles.mutedCopySmall}>📍 {meetup.location} · {meetup.dateTime}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Feather name="map-pin" size={12} color={brand.muted} />
+            <Text style={styles.mutedCopySmall}>{meetup.location} · {meetup.dateTime}</Text>
+          </View>
           <Pressable
             hitSlop={hitSlop}
-            onPress={() => toggleRSVPMeetup(meetup.id)}
+            onPress={() => {
+              tapMedium();
+              toggleRSVPMeetup(meetup.id);
+              toast.show(
+                meetup.rsvpStatus ? `Cancelled RSVP for ${meetup.title}` : `You're going to ${meetup.title}`,
+                meetup.rsvpStatus ? 'info' : 'success'
+              );
+            }}
             style={({ pressed }) => [
               { marginTop: 6, alignSelf: 'flex-end', backgroundColor: meetup.rsvpStatus ? '#D9F4DE' : brand.primary, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 12 },
               pressed && { opacity: 0.75, transform: [{ scale: 0.95 }] },
             ]}
           >
             <Text style={{ fontSize: 12, fontWeight: '700', color: meetup.rsvpStatus ? '#2F8B4E' : '#fff' }}>
-              {meetup.rsvpStatus ? '✓ Going' : '+ RSVP (+50 Pts)'}
+              {meetup.rsvpStatus ? 'Going' : '+ RSVP (+50 Pts)'}
             </Text>
           </Pressable>
         </View>
@@ -325,7 +349,7 @@ export function HomeScreen({
             onPress={onOpenCommunity}
             style={({ pressed }) => [styles.communityRowCard, pressed && { opacity: 0.8, transform: [{ scale: 0.98 }] }]}
           >
-            <Image source={{ uri: community.image }} style={styles.communityThumb} />
+            <AppImage source={{ uri: community.image }} style={styles.communityThumb} />
             <View style={styles.flexFill}>
               <Text style={styles.communityName}>{community.name}</Text>
               <Text style={styles.mutedCopySmall}>{community.members} members · {community.subject}</Text>

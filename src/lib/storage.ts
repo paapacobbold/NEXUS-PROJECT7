@@ -8,7 +8,62 @@ const KEYS = {
   NOTIFICATIONS: '@nexus_notification_prefs',
   COMMUNITIES: '@nexus_communities_cache',
   MEETUPS: '@nexus_meetups_cache',
+  ONBOARDING_SEEN: '@nexus_onboarding_seen',
+  AUTH_STATE: '@nexus_auth_state',
 };
+
+/**
+ * Local record of whether the user is signed in.
+ *
+ * When Supabase is configured its own persisted session is authoritative; this
+ * flag is what carries sign-in state in offline/mock mode, and it is what lets
+ * the launch sequence pick an entry route before any network call resolves.
+ */
+export type PersistedAuthState = 'authenticated' | 'guest';
+
+export async function saveAuthState(state: PersistedAuthState): Promise<void> {
+  try {
+    await AsyncStorage.setItem(KEYS.AUTH_STATE, state);
+  } catch (err) {
+    console.warn('Error saving auth state:', err);
+  }
+}
+
+export async function loadAuthState(): Promise<PersistedAuthState | null> {
+  try {
+    const val = await AsyncStorage.getItem(KEYS.AUTH_STATE);
+    return val === 'authenticated' || val === 'guest' ? val : null;
+  } catch (err) {
+    console.warn('Error loading auth state:', err);
+    return null;
+  }
+}
+
+export async function saveOnboardingSeen(): Promise<void> {
+  try {
+    await AsyncStorage.setItem(KEYS.ONBOARDING_SEEN, 'true');
+  } catch (err) {
+    console.warn('Error saving onboarding flag:', err);
+  }
+}
+
+export async function loadOnboardingSeen(): Promise<boolean> {
+  try {
+    return (await AsyncStorage.getItem(KEYS.ONBOARDING_SEEN)) === 'true';
+  } catch (err) {
+    console.warn('Error loading onboarding flag:', err);
+    return false;
+  }
+}
+
+/** Clears per-user state on sign out. Onboarding and theme are device-level, so they stay. */
+export async function clearSessionStorage(): Promise<void> {
+  try {
+    await AsyncStorage.multiRemove([KEYS.AUTH_STATE, KEYS.PROFILE]);
+  } catch (err) {
+    console.warn('Error clearing session storage:', err);
+  }
+}
 
 export async function saveThemeStorage(theme: ThemeMode): Promise<void> {
   try {

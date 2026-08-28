@@ -4,6 +4,15 @@ import { GlobalSearchModal } from '../components/GlobalSearchModal';
 import { AppStoreContext, AppStore } from '../context/AppStoreContext';
 
 const mockAppStore: AppStore = {
+  isLoadingData: false,
+  isRefreshing: false,
+  refreshAll: jest.fn(),
+  isBootstrapping: false,
+  isAuthenticated: true,
+  markAuthenticated: jest.fn(),
+  signOut: jest.fn(),
+  hasSeenOnboarding: true,
+  markOnboardingSeen: jest.fn(),
   theme: 'light',
   setTheme: jest.fn(),
   profile: {
@@ -14,6 +23,8 @@ const mockAppStore: AppStore = {
     year: '3rd Year',
     bio: 'Student at Nexus',
     skills: ['React Native', 'TypeScript'],
+    interests: [],
+    skillLevel: 'Beginner',
     rating: '4.9',
     points: 450,
     sessions: 24,

@@ -4,9 +4,9 @@ import {
   Modal,
   Pressable,
   ScrollView,
-  Text,
   View,
 } from 'react-native';
+import { Text } from './Typography';
 import { AppRoute } from '../context/AppStoreContext';
 import { brand } from '../data/mockData';
 import { styles } from '../styles/appStyles';
@@ -68,7 +68,7 @@ export function NotificationCenterModal({
     },
     {
       id: 'notif-4',
-      title: 'XP Bonus Awarded 🎉',
+      title: 'XP Bonus Awarded',
       message: 'You earned +50 XP for confirming your campus study meetup RSVP!',
       time: '3h ago',
       category: 'XP',
@@ -109,7 +109,7 @@ export function NotificationCenterModal({
           {/* Modal Header Bar */}
           <View style={styles.modalHeader}>
             <View>
-              <Text style={styles.modalTitle}>Notification Center 🔔</Text>
+              <Text style={styles.modalTitle}>Notification Center</Text>
               <Text style={styles.mutedCopySmall}>
                 {unreadCount > 0 ? `${unreadCount} unread activity alerts` : 'All caught up!'}
               </Text>

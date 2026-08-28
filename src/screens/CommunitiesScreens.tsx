@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   FlatList,
   Image,
@@ -9,10 +9,10 @@ import {
   Modal,
   Pressable,
   ScrollView,
-  Text,
   TextInput,
   View,
 } from 'react-native';
+import { Text } from '../components/Typography';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Avatar,
@@ -24,6 +24,18 @@ import {
   PrimaryButton,
   PrimarySmallButton,
 } from '../components/UIComponents';
+import { AppImage } from '../components/AppImage';
+import {
+  awardPoints,
+  createCommunityPost,
+  createResource,
+  getCommunityPosts,
+  subscribeToCommunityPosts,
+} from '../lib/supabase';
+import { uploadFile } from '../lib/uploads';
+import { EmptyState, SkeletonList, useRefreshControl } from '../components/States';
+import { useToast } from '../components/Toast';
+import { tapMedium } from '../lib/haptics';
 import { useAppStore } from '../context/AppStoreContext';
 import { brand, CommunityItem, DEFAULT_AVATAR } from '../data/mockData';
 import { styles } from '../styles/appStyles';
@@ -39,7 +51,15 @@ export function CommunitiesScreen({
   onOpenCommunity?: () => void;
   onCreateCommunity: () => void;
 }) {
-  const { communitiesList, toggleJoinCommunity } = useAppStore();
+  const { communitiesList, toggleJoinCommunity, isLoadingData } = useAppStore();
+  const refreshControl = useRefreshControl();
+  const toast = useToast();
+
+  const handleToggleJoin = (id: string, name: string, joined: boolean) => {
+    tapMedium();
+    toggleJoinCommunity(id);
+    toast.show(joined ? `Left ${name}` : `Joined ${name}`, joined ? 'info' : 'success');
+  };
   const [activeFilter, setActiveFilter] = useState<'all' | 'joined' | 'stem' | 'humanities'>('all');
   const handleOpen = onOpenDetail || onOpenCommunity || (() => {});
 
@@ -80,8 +100,10 @@ export function CommunitiesScreen({
         data={filteredCommunities}
         keyExtractor={(item) => item.id}
         showsVerticalScrollIndicator={false}
+        refreshControl={refreshControl}
+        ItemSeparatorComponent={() => <View style={styles.listSeparator} />}
         ListHeaderComponent={
-          <>
+          <View style={styles.listHeader}>
             <View style={styles.screenHeaderRow}>
               <Text style={styles.screenTitle}>Communities</Text>
               <IconButton icon="add" onPress={onCreateCommunity} filled />
@@ -119,18 +141,20 @@ export function CommunitiesScreen({
                 <Text style={styles.mutedCopySmall}>Based on active university learning groups</Text>
               </View>
             </View>
-          </>
+          </View>
         }
         ListEmptyComponent={
-          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 40 }}>
-            <Ionicons name="filter-outline" size={36} color={brand.muted} />
-            <Text style={{ fontSize: 15, fontWeight: '700', color: brand.text, marginTop: 8 }}>
-              No {activeFilter.toUpperCase()} Communities Found
-            </Text>
-            <Text style={{ fontSize: 13, color: brand.muted, marginTop: 4, textAlign: 'center' }}>
-              Tap "All" or create a new community to get started!
-            </Text>
-          </View>
+          isLoadingData ? (
+            <SkeletonList count={4} />
+          ) : (
+            <EmptyState
+              icon="people-outline"
+              title={`No ${activeFilter} communities yet`}
+              message="Try a different filter, or start one for your course and invite your classmates."
+              actionLabel="Create a community"
+              onAction={onCreateCommunity}
+            />
+          )
         }
         renderItem={({ item }) => (
           <View style={styles.largeCommunityCard}>
@@ -142,7 +166,7 @@ export function CommunitiesScreen({
               accessibilityRole="button"
               accessibilityLabel={`View community ${item.name}`}
             >
-              <Image source={{ uri: item.image }} style={styles.largeCommunityImage} />
+              <AppImage source={{ uri: item.image }} style={styles.largeCommunityImage} />
             </Pressable>
             <View style={styles.cardBody}>
               <View style={styles.cardTitleRow}>
@@ -154,7 +178,7 @@ export function CommunitiesScreen({
                 </View>
                 <Pressable
                   hitSlop={defaultHitSlop}
-                  onPress={() => toggleJoinCommunity(item.id)}
+                  onPress={() => handleToggleJoin(item.id, item.name, Boolean(item.joined))}
                   style={({ pressed }) => [
                     styles.primarySmallButton,
                     item.joined ? styles.ghostSmallButton : undefined,
@@ -203,6 +227,7 @@ export function CommunityDetailScreen({
     Array<{ id: string; title: string; size: string; category: string }>
   >([]);
 
+  const toast = useToast();
   const [postTitle, setPostTitle] = useState('');
   const [postBody, setPostBody] = useState('');
   const [postsFeedList, setPostsFeedList] = useState(
@@ -211,6 +236,40 @@ export function CommunityDetailScreen({
       authorAvatar: DEFAULT_AVATAR,
     }))
   );
+  const [postsLoading, setPostsLoading] = useState(true);
+  const [uploadingResource, setUploadingResource] = useState(false);
+  const [postSubmitting, setPostSubmitting] = useState(false);
+
+  // Posts used to live only in this component's state, so every discussion was
+  // lost the moment you navigated away. Read them from the database and
+  // subscribe so other members' posts arrive without a refresh.
+  useEffect(() => {
+    let active = true;
+    let unsubscribe: (() => void) | undefined;
+
+    async function loadPosts() {
+      const rows = await getCommunityPosts(community.id);
+      if (!active) return;
+      if (rows.length > 0) {
+        setPostsFeedList(rows.map((p) => ({ ...p, authorAvatar: DEFAULT_AVATAR })));
+      }
+      setPostsLoading(false);
+
+      unsubscribe = subscribeToCommunityPosts(community.id, (incoming) => {
+        setPostsFeedList((prev) =>
+          prev.some((p) => p.id === incoming.id)
+            ? prev
+            : [{ ...incoming, authorAvatar: DEFAULT_AVATAR }, ...prev]
+        );
+      });
+    }
+
+    loadPosts();
+    return () => {
+      active = false;
+      unsubscribe?.();
+    };
+  }, [community.id]);
 
   const defaultResources = [
     { id: 'res-1', title: 'Calculus_III_Final_Formula_Sheet.pdf', size: '1.4 MB', category: 'Formula Sheet' },
@@ -226,45 +285,100 @@ export function CommunityDetailScreen({
     updateProfile({ points: (profile.points || 0) + 20 });
   };
 
-  const handleCreatePost = () => {
-    if (!postTitle.trim() || !postBody.trim()) return;
-    const newPost = {
-      id: `post-${Date.now()}`,
+  const handleCreatePost = async () => {
+    if (!postTitle.trim() || !postBody.trim() || postSubmitting) return;
+    setPostSubmitting(true);
+
+    const title = postTitle.trim();
+    const body = postBody.trim();
+
+    // Show it immediately, then reconcile with the saved row.
+    const optimisticId = `pending-${Date.now()}`;
+    const optimistic = {
+      id: optimisticId,
       author: profile.name || 'Student Learner',
       authorAvatar: profile.avatar || DEFAULT_AVATAR,
       role: 'Student',
       time: 'Just now',
-      title: postTitle.trim(),
-      body: postBody.trim(),
-      stats: '0 replies · 1 like',
+      title,
+      body,
+      stats: '0 replies',
     };
-    setPostsFeedList((prev) => [newPost, ...prev]);
+    setPostsFeedList((prev) => [optimistic, ...prev]);
     setPostTitle('');
     setPostBody('');
-    updateProfile({ points: (profile.points || 0) + 30 });
+
+    try {
+      const { data, error } = await createCommunityPost(community.id, title, body, profile.id);
+      if (error) throw error;
+
+      if (data?.id) {
+        setPostsFeedList((prev) =>
+          prev.map((p) => (p.id === optimisticId ? { ...p, id: data.id } : p))
+        );
+      }
+      await awardPoints(30, 'post_created', data?.id);
+      updateProfile({ points: (profile.points || 0) + 30 });
+      tapMedium();
+    } catch (err: any) {
+      // Roll the optimistic post back so the feed never shows a post that
+      // was not saved.
+      setPostsFeedList((prev) => prev.filter((p) => p.id !== optimisticId));
+      setPostTitle(title);
+      setPostBody(body);
+      toast.show(err?.message || 'Could not publish your post. Try again.', 'error');
+    } finally {
+      setPostSubmitting(false);
+    }
   };
 
   const handlePickDocument = async () => {
+    if (uploadingResource) return;
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: 'application/pdf',
         copyToCacheDirectory: true,
       });
+      if (result.canceled || !result.assets?.length) return;
 
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const doc = result.assets[0];
-        const sizeMb = doc.size ? `${(doc.size / (1024 * 1024)).toFixed(1)} MB` : '1.0 MB';
-        const newResource = {
-          id: `custom-${Date.now()}`,
-          title: doc.name || 'Uploaded_Course_Material.pdf',
-          size: sizeMb,
-          category: 'Uploaded PDF',
-        };
-        setCustomResources((prev) => [newResource, ...prev]);
-        updateProfile({ points: (profile.points || 0) + 50 });
-      }
-    } catch (err) {
-      console.warn('Error picking document:', err);
+      const doc = result.assets[0];
+      setUploadingResource(true);
+
+      // The picker only gives a local file:// URI — previously that was all the
+      // app kept, so the "shared" resource existed on one device and nowhere
+      // else. Push the bytes to Storage and record the object path.
+      const { path } = await uploadFile({
+        bucket: 'resources',
+        userId: profile.id || '',
+        uri: doc.uri,
+        fileName: doc.name || undefined,
+        contentType: doc.mimeType || 'application/pdf',
+      });
+
+      const { error } = await createResource({
+        community_id: community.id,
+        uploader_id: profile.id,
+        title: doc.name || 'Course material',
+        kind: 'file',
+        url: path,
+        mime_type: doc.mimeType || 'application/pdf',
+        size_bytes: doc.size ?? undefined,
+      });
+      if (error) throw error;
+
+      const sizeMb = doc.size ? `${(doc.size / (1024 * 1024)).toFixed(1)} MB` : '1.0 MB';
+      setCustomResources((prev) => [
+        { id: path, title: doc.name || 'Course material', size: sizeMb, category: 'Uploaded PDF' },
+        ...prev,
+      ]);
+
+      await awardPoints(50, 'resource_shared');
+      updateProfile({ points: (profile.points || 0) + 50 });
+      toast.show(`Shared ${doc.name || 'the file'} with the community`);
+    } catch (err: any) {
+      toast.show(err?.message || 'Upload failed. Check your connection and try again.', 'error');
+    } finally {
+      setUploadingResource(false);
     }
   };
 
@@ -341,7 +455,7 @@ export function CommunityDetailScreen({
 
           <Pressable hitSlop={defaultHitSlop} onPress={() => setShowResources(true)} style={({ pressed }) => [[styles.sharePrompt, { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }], pressed && { opacity: 0.8 }]}>
             <Ionicons name="document-attach-outline" size={20} color={brand.primary} />
-            <Text style={{ fontSize: 13, fontWeight: '700', color: brand.primary }}>📄 Download Study Materials & PDFs (+20 XP)</Text>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: brand.primary }}>Download Study Materials & PDFs (+20 XP)</Text>
           </Pressable>
 
           {postsFeedList.length === 0 ? (
@@ -387,7 +501,7 @@ export function CommunityDetailScreen({
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.modalTitle}>Study Materials & PDFs 📄</Text>
+                <Text style={styles.modalTitle}>Study Materials & PDFs</Text>
                 <Text style={styles.mutedCopySmall}>Course formula sheets, slides & solved exams</Text>
               </View>
               <Pressable hitSlop={defaultHitSlop} onPress={() => setShowResources(false)}>
@@ -445,7 +559,7 @@ export function CommunityDetailScreen({
                       ]}
                     >
                       <Text style={{ fontSize: 12, fontWeight: '800', color: isDone ? '#137333' : '#fff' }}>
-                        {isDone ? '✓ Downloaded' : 'PDF (+20 XP)'}
+                        {isDone ? 'Downloaded' : 'PDF (+20 XP)'}
                       </Text>
                     </Pressable>
                   </View>
@@ -469,6 +583,7 @@ export function CreateCommunityScreen({
   onCreated: () => void;
 }) {
   const { addCommunity } = useAppStore();
+  const toast = useToast();
   const [name, setName] = useState('');
   const [subject, setSubject] = useState('Mathematics');
   const [description, setDescription] = useState('');
@@ -476,6 +591,7 @@ export function CreateCommunityScreen({
   const handleCreate = () => {
     if (!name.trim() || !description.trim()) return;
     addCommunity(name.trim(), subject.trim(), description.trim());
+    toast.show(`${name.trim()} created`);
     onCreated();
   };
 

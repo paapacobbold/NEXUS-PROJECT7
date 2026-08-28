@@ -5,13 +5,15 @@ import {
   Animated,
   Image,
   Pressable,
-  Text,
   TextInput,
   TextInputProps,
   View,
 } from 'react-native';
+import { Text } from './Typography';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { TabKey, useAppStore } from '../context/AppStoreContext';
+import { TabKey, ThemeMode, useAppStore } from '../context/AppStoreContext';
+import { AppImage } from './AppImage';
+import { tapLight } from '../lib/haptics';
 import { brand } from '../data/mockData';
 import { styles, ThemeColors, useThemeColors } from '../styles/appStyles';
 
@@ -95,6 +97,60 @@ export function OutlineButton({ label, onPress }: { label: string; onPress: () =
     >
       <Text style={[styles.outlineButtonText, { color: colors.text }]}>{label}</Text>
     </Pressable>
+  );
+}
+
+const THEME_OPTIONS: Array<{ key: ThemeMode; label: string; icon: keyof typeof Ionicons.glyphMap }> = [
+  { key: 'system', label: 'System', icon: 'phone-portrait-outline' },
+  { key: 'light', label: 'Light', icon: 'sunny-outline' },
+  { key: 'dark', label: 'Dark', icon: 'moon-outline' },
+  { key: 'midnight', label: 'Midnight', icon: 'planet-outline' },
+];
+
+/**
+ * Appearance control. The theme system supported light/dark/midnight from the
+ * start but nothing ever called setTheme, so it was unreachable — this is the
+ * entry point.
+ */
+export function ThemePicker() {
+  const { theme, setTheme } = useAppStore();
+  const colors = useThemeColors();
+
+  return (
+    <View style={styles.themePickerCard}>
+      <Text style={styles.themePickerTitle}>Appearance</Text>
+      <Text style={styles.themePickerHint}>Choose how NEXUS looks on this device.</Text>
+      <View style={styles.themePickerRow} accessibilityRole="radiogroup">
+        {THEME_OPTIONS.map((option) => {
+          const active = theme === option.key;
+          return (
+            <Pressable
+              key={option.key}
+              onPress={() => {
+                tapLight();
+                setTheme(option.key);
+              }}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={option.label + ' appearance'}
+              style={({ pressed }) => [
+                styles.themeOption,
+                {
+                  borderColor: active ? colors.tabBarActive : colors.border,
+                  backgroundColor: active ? colors.tabBarActive : 'transparent',
+                },
+                pressed && { opacity: 0.75 },
+              ]}
+            >
+              <Ionicons name={option.icon} size={18} color={active ? '#fff' : colors.muted} />
+              <Text style={[styles.themeOptionText, { color: active ? '#fff' : colors.muted }]}>
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
   );
 }
 
@@ -311,17 +367,24 @@ export function IconButton({
   onPress,
   badge,
   filled,
+  label,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   onPress: () => void;
   badge?: string;
   filled?: boolean;
+  /** Screen-reader name. Falls back to a readable form of the icon name. */
+  label?: string;
 }) {
   const colors = useThemeColors();
+  // Icon-only buttons are invisible to screen readers without this.
+  const accessibleName = label ?? icon.replace(/-(outline|sharp)$/, '').replace(/-/g, ' ');
   return (
     <Pressable
       onPress={onPress}
       hitSlop={defaultHitSlop}
+      accessibilityRole="button"
+      accessibilityLabel={accessibleName}
       style={({ pressed }) => [
         styles.iconButton,
         { backgroundColor: colors.card, borderColor: colors.border },
@@ -388,7 +451,7 @@ export function Avatar({
       source.startsWith('data:'));
 
   const content = isImageUri ? (
-    <Image source={{ uri: source }} style={{ width: size, height: size, borderRadius: size / 2 }} />
+    <AppImage source={{ uri: source }} style={{ width: size, height: size, borderRadius: size / 2 }} />
   ) : (
     <View
       style={[
@@ -469,10 +532,16 @@ function TabBarItem({
 
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => {
+        tapLight();
+        onPress();
+      }}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       hitSlop={defaultHitSlop}
+      accessibilityRole="tab"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={item.label}
       style={styles.tabItem}
     >
       <Animated.View style={{ alignItems: 'center', transform: [{ scale: scaleAnim }] }}>
