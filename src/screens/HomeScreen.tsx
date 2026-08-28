@@ -301,9 +301,9 @@ export function HomeScreen({
       {meetupsList.map((meetup) => (
         <View key={meetup.id} style={[styles.communityRowCard, { flexDirection: 'column', alignItems: 'flex-start', padding: 14, gap: 6 }]}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, flexShrink: 1 }}>
               <Ionicons name="location" size={16} color={brand.primary} />
-              <Text style={styles.communityName}>{meetup.title}</Text>
+              <Text numberOfLines={1} style={[styles.communityName, { flexShrink: 1 }]}>{meetup.title}</Text>
             </View>
             <Pill label={`${meetup.rsvpCount} Attending`} compact />
           </View>

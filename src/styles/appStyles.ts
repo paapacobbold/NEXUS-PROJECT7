@@ -578,6 +578,15 @@ function buildStyles(c: ThemeColors) {
     mainShell: {
       flex: 1,
     },
+    /** Wraps a FlatList ListHeaderComponent so its sections are spaced. */
+    listHeader: {
+      gap: 18,
+      paddingBottom: 14,
+    },
+    /** ItemSeparatorComponent height for card-style list rows. */
+    listSeparator: {
+      height: 14,
+    },
     screenContent: {
       paddingHorizontal: 20,
       paddingTop: 14,
@@ -965,7 +974,7 @@ function buildStyles(c: ThemeColors) {
       gap: 12,
       paddingVertical: 10,
       borderBottomWidth: 1,
-      borderBottomColor: '#ECE7E0',
+      borderBottomColor: c.border,
     },
     threadTop: {
       flexDirection: 'row',
@@ -1635,7 +1644,7 @@ function buildStyles(c: ThemeColors) {
       gap: 12,
       paddingVertical: 10,
       borderBottomWidth: 1,
-      borderBottomColor: '#F0EEEA',
+      borderBottomColor: c.border,
     },
     participantRole: {
       color: c.muted,
@@ -1929,7 +1938,7 @@ function buildStyles(c: ThemeColors) {
       gap: 12,
       paddingVertical: 12,
       borderBottomWidth: 1,
-      borderBottomColor: '#F4F2EE',
+      borderBottomColor: c.border,
     },
     resourceFileRow: {
       flexDirection: 'row',
@@ -1970,7 +1979,7 @@ function buildStyles(c: ThemeColors) {
       gap: 12,
       paddingVertical: 12,
       borderBottomWidth: 1,
-      borderBottomColor: '#F4F2EE',
+      borderBottomColor: c.border,
     },
     notificationUnreadRow: {
       backgroundColor: '#EFF6FF',

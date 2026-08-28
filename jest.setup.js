@@ -1,6 +1,13 @@
 // Mocking Native & Expo modules for unit testing
 import React from 'react';
 
+// AsyncStorage is a native module. supabase.ts now imports it at module scope
+// (it is the session storage adapter), so every suite that touches supabase
+// needs it stubbed. Suites with their own mock still override this.
+jest.mock('@react-native-async-storage/async-storage', () =>
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock')
+);
+
 // Mock Expo Vector Icons
 jest.mock('@expo/vector-icons', () => {
   const { Text } = require('react-native');

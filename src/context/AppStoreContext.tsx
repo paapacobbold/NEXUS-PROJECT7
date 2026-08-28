@@ -65,6 +65,20 @@ export type AppStore = {
   isRefreshing: boolean;
   /** Re-fetches communities, sessions and meetups. Wired to RefreshControl. */
   refreshAll: () => Promise<void>;
+
+  /* ------------------------------- Session ------------------------------- */
+  /** True while the launch sequence restores the persisted session. */
+  isBootstrapping: boolean;
+  /** True when a Supabase session (or an offline sign-in) is active. */
+  isAuthenticated: boolean;
+  /** Records a successful sign-in / sign-up and persists it across relaunches. */
+  markAuthenticated: () => void;
+  /** Ends the session, clears cached user state, and returns to the welcome screen. */
+  signOut: () => Promise<void>;
+  /** True once the user has completed or skipped onboarding on this device. */
+  hasSeenOnboarding: boolean;
+  /** Records that onboarding has been seen so it never replays. */
+  markOnboardingSeen: () => void;
 };
 
 export const AppStoreContext = createContext<AppStore | null>(null);

@@ -37,15 +37,21 @@ import { LeaderboardScreen, RecordingsScreen, FiltersScreen } from './src/screen
 import { OnboardingScreen, SignupScreen, SigninScreen, SplashScreen, WelcomeScreen } from './src/screens/AuthScreens';
 import { applyThemeStyles, getThemeColors, nowTime, styles } from './src/styles/appStyles';
 
+import { resolveAuthenticated, resolveEntryRoute } from './src/lib/session';
 import { GlobalSearchModal } from './src/components/GlobalSearchModal';
 import { NotificationCenterModal } from './src/components/NotificationCenterModal';
 import { ToastProvider } from './src/components/Toast';
 import {
+  clearSessionStorage,
+  loadAuthState,
   loadCommunitiesCache,
   loadMeetupsCache,
   loadNotificationPrefsStorage,
+  loadOnboardingSeen,
   loadProfileStorage,
   loadThemeStorage,
+  saveAuthState,
+  saveOnboardingSeen,
   saveCommunitiesCache,
   saveMeetupsCache,
   saveNotificationPrefsStorage,
@@ -138,6 +144,82 @@ export default function App() {
 
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  /* --------------------------- Session lifecycle ---------------------------
+   * The app used to open on 'splash' -> 'onboarding' unconditionally, so every
+   * relaunch replayed onboarding even for a signed-in user. Launch now resolves
+   * the persisted session first and picks an entry route from it. */
+  const [isBootstrapping, setIsBootstrapping] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [hasSeenOnboarding, setHasSeenOnboarding] = useState(false);
+  const [entryRoute, setEntryRoute] = useState<AppRoute | null>(null);
+  // Splash stays up until BOTH its own minimum display time and bootstrap finish.
+  const [splashHeld, setSplashHeld] = useState(true);
+
+  const markAuthenticated = useCallback(() => {
+    setIsAuthenticated(true);
+    saveAuthState('authenticated');
+  }, []);
+
+  const markOnboardingSeen = useCallback(() => {
+    setHasSeenOnboarding(true);
+    saveOnboardingSeen();
+  }, []);
+
+  const signOut = useCallback(async () => {
+    try {
+      const { signOutUser } = await import('./src/lib/supabase');
+      await signOutUser();
+    } catch (err) {
+      console.warn('Sign out error:', err);
+    }
+    await clearSessionStorage();
+    setIsAuthenticated(false);
+    setProfile(currentUser);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function bootstrapSession() {
+      const [seenOnboarding, persistedAuth] = await Promise.all([
+        loadOnboardingSeen(),
+        loadAuthState(),
+      ]);
+
+      let hasSupabaseEnv = false;
+      let hasSupabaseSession = false;
+
+      try {
+        const supabaseLib = await import('./src/lib/supabase');
+        hasSupabaseEnv = supabaseLib.hasSupabaseEnv;
+        if (hasSupabaseEnv) {
+          // getSession() reads the AsyncStorage-persisted session, so this
+          // resolves offline too.
+          const session = await supabaseLib.getCurrentSession();
+          hasSupabaseSession = Boolean(session?.user);
+        }
+      } catch (err) {
+        console.warn('Session restore error:', err);
+      }
+
+      const authed = resolveAuthenticated({ hasSupabaseEnv, hasSupabaseSession, persistedAuth });
+      if (hasSupabaseEnv) {
+        await saveAuthState(authed ? 'authenticated' : 'guest');
+      }
+
+      if (cancelled) return;
+      setHasSeenOnboarding(seenOnboarding);
+      setIsAuthenticated(authed);
+      setEntryRoute(resolveEntryRoute({ isAuthenticated: authed, hasSeenOnboarding: seenOnboarding }));
+      setIsBootstrapping(false);
+    }
+
+    bootstrapSession();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Shared by the initial mount fetch and pull-to-refresh.
   const refreshCollections = useCallback(async () => {
@@ -270,6 +352,14 @@ export default function App() {
 
     initSupabaseData().finally(() => setIsLoadingData(false));
   }, [refreshCollections]);
+
+  // Splash exits only when the minimum display time has elapsed AND the
+  // persisted session has resolved, so the first screen is never wrong.
+  useEffect(() => {
+    if (stack[stack.length - 1] === 'splash' && !splashHeld && entryRoute) {
+      setStack([entryRoute]);
+    }
+  }, [stack, splashHeld, entryRoute]);
 
   const refreshAll = useCallback(async () => {
     setIsRefreshing(true);
@@ -454,6 +544,12 @@ export default function App() {
       isLoadingData,
       isRefreshing,
       refreshAll,
+      isBootstrapping,
+      isAuthenticated,
+      markAuthenticated,
+      signOut,
+      hasSeenOnboarding,
+      markOnboardingSeen,
       meetupsList,
       toggleRSVPMeetup: (meetupId) => {
         setMeetupsList((prev) =>
@@ -503,18 +599,43 @@ export default function App() {
           .catch((err) => console.warn('Supabase import warning:', err));
       },
     }),
-    [profile, notificationPrefs, threads, messagesByThread, selectedFilters, communitiesList, sessionsList, meetupsList, theme],
+    [
+      profile,
+      notificationPrefs,
+      threads,
+      messagesByThread,
+      selectedFilters,
+      communitiesList,
+      sessionsList,
+      meetupsList,
+      theme,
+      isLoadingData,
+      isRefreshing,
+      refreshAll,
+      isBootstrapping,
+      isAuthenticated,
+      markAuthenticated,
+      signOut,
+      hasSeenOnboarding,
+      markOnboardingSeen,
+    ],
   );
 
   const renderRoute = () => {
     switch (currentRoute) {
       case 'splash':
-        return <SplashScreen onDone={() => replace('onboarding')} />;
+        return <SplashScreen onDone={() => setSplashHeld(false)} />;
       case 'onboarding':
         return (
           <OnboardingScreen
-            onSkip={() => replace('welcome')}
-            onDone={() => replace('welcome')}
+            onSkip={() => {
+              markOnboardingSeen();
+              replace('welcome');
+            }}
+            onDone={() => {
+              markOnboardingSeen();
+              replace('welcome');
+            }}
           />
         );
       case 'welcome':
@@ -528,7 +649,10 @@ export default function App() {
         return (
           <SignupScreen
             onBack={goBack}
-            onContinue={() => replace('main-home')}
+            onContinue={() => {
+              markAuthenticated();
+              setStack(['main-home']);
+            }}
             onSignInClick={() => replace('signin')}
           />
         );
@@ -536,7 +660,10 @@ export default function App() {
         return (
           <SigninScreen
             onBack={goBack}
-            onContinue={() => replace('main-home')}
+            onContinue={() => {
+              markAuthenticated();
+              setStack(['main-home']);
+            }}
             onSignUpClick={() => replace('signup')}
           />
         );
@@ -599,13 +726,9 @@ export default function App() {
               onChangePassword={() => push('change-password')}
               onNotificationPreferences={() => push('notification-preferences')}
               onSignOut={async () => {
-                try {
-                  const { signOutUser } = await import('./src/lib/supabase');
-                  await signOutUser();
-                } catch (err) {
-                  console.error('Sign out error:', err);
-                }
-                replace('welcome');
+                await signOut();
+                // Reset the stack so Back cannot re-enter the signed-in app.
+                setStack(['welcome']);
               }}
             />
           </MainShell>

@@ -1,4 +1,6 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
+import { AppState, Platform } from 'react-native';
 import { CommunityItem, SessionItem, UserProfile, MessageItem, InPersonMeetup, ThreadPreview, DEFAULT_AVATAR } from '../data/mockData';
 
 let _clientInstance: any = null;
@@ -26,9 +28,42 @@ export function getSupabaseClient() {
   }
 
   if (!_clientInstance) {
-    _clientInstance = createClient(supabaseUrl, supabaseAnonKey);
+    // React Native has no localStorage, so without an explicit adapter
+    // supabase-js cannot persist the session and every relaunch starts signed
+    // out. AsyncStorage is what makes "stay logged in" work at all.
+    _clientInstance = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        storage: AsyncStorage,
+        persistSession: true,
+        autoRefreshToken: true,
+        // Sessions never arrive via a URL fragment on native.
+        detectSessionInUrl: false,
+      },
+    });
+    startAutoRefreshBridge();
   }
   return _clientInstance;
+}
+
+let _autoRefreshBridged = false;
+
+/**
+ * Supabase's recommended React Native pattern: only refresh tokens while the
+ * app is foregrounded, so a backgrounded app does not burn timers or race the
+ * OS suspending it mid-request.
+ */
+function startAutoRefreshBridge() {
+  if (_autoRefreshBridged || Platform.OS === 'web') return;
+  _autoRefreshBridged = true;
+
+  AppState.addEventListener('change', (status) => {
+    if (!_clientInstance) return;
+    if (status === 'active') {
+      _clientInstance.auth.startAutoRefresh();
+    } else {
+      _clientInstance.auth.stopAutoRefresh();
+    }
+  });
 }
 
 export const supabase = getSupabaseClient();

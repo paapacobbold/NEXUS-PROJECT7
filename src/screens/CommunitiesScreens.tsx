@@ -93,8 +93,9 @@ export function CommunitiesScreen({
         keyExtractor={(item) => item.id}
         showsVerticalScrollIndicator={false}
         refreshControl={refreshControl}
+        ItemSeparatorComponent={() => <View style={styles.listSeparator} />}
         ListHeaderComponent={
-          <>
+          <View style={styles.listHeader}>
             <View style={styles.screenHeaderRow}>
               <Text style={styles.screenTitle}>Communities</Text>
               <IconButton icon="add" onPress={onCreateCommunity} filled />
@@ -132,7 +133,7 @@ export function CommunitiesScreen({
                 <Text style={styles.mutedCopySmall}>Based on active university learning groups</Text>
               </View>
             </View>
-          </>
+          </View>
         }
         ListEmptyComponent={
           isLoadingData ? (

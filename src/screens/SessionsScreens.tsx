@@ -115,8 +115,8 @@ export function SessionsScreen({
       {meetupsList.map((meetup) => (
         <View key={meetup.id} style={[styles.sessionListCard, { gap: 8 }]}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Pressable onPress={() => setSelectedMeetupMap(meetup)}>
-              <Text style={[styles.communityName, { color: brand.primary }]}>📍 {meetup.title}</Text>
+            <Pressable onPress={() => setSelectedMeetupMap(meetup)} style={{ flex: 1, flexShrink: 1 }}>
+              <Text numberOfLines={1} style={[styles.communityName, { color: brand.primary, flexShrink: 1 }]}>📍 {meetup.title}</Text>
             </Pressable>
             <Pill label={`${meetup.rsvpCount} Attending`} compact />
           </View>

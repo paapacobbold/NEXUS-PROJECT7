@@ -7,6 +7,12 @@ const mockAppStore: AppStore = {
   isLoadingData: false,
   isRefreshing: false,
   refreshAll: jest.fn(),
+  isBootstrapping: false,
+  isAuthenticated: true,
+  markAuthenticated: jest.fn(),
+  signOut: jest.fn(),
+  hasSeenOnboarding: true,
+  markOnboardingSeen: jest.fn(),
   theme: 'light',
   setTheme: jest.fn(),
   profile: {
