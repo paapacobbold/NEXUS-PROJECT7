@@ -181,17 +181,30 @@ export const styles = StyleSheet.create({
   flexFill: {
     flex: 1,
   },
-  onboardingHero: {
-    height: '58%',
-    justifyContent: 'space-between',
+  onboardingHeroLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    overflow: 'hidden',
+  },
+  onboardingHeroImage: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
   },
   coverImage: {
     resizeMode: 'cover',
   },
-  onboardingTopRow: {
+  onboardingTopBar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     paddingHorizontal: 18,
   },
   skipPill: {
@@ -205,7 +218,11 @@ export const styles = StyleSheet.create({
     fontWeight: '700',
   },
   onboardingFade: {
-    height: 200,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 210,
   },
   onboardingBody: {
     flex: 1,
@@ -215,6 +232,7 @@ export const styles = StyleSheet.create({
   },
   dotRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 6,
   },
   dot: {
@@ -424,21 +442,34 @@ export const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0.4,
   },
-  onboardingBackPill: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(44,44,44,0.28)',
-  },
   onboardingCopy: {
     color: '#5A5A66',
     fontSize: 16,
     lineHeight: 24,
   },
-  onboardingCta: {
-    marginTop: 'auto',
+  onboardingChrome: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 22,
+    gap: 20,
+  },
+  onboardingCtaButton: {
+    height: 58,
+    borderRadius: 18,
+    backgroundColor: brand.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  onboardingCtaLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   welcomeActions: {
     marginTop: 'auto',
