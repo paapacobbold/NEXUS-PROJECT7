@@ -21,13 +21,25 @@ export type UploadResult = {
   url: string;
 };
 
-/** Reads a local file URI into bytes. RN has no Node Buffer, so go via fetch. */
+/**
+ * Reads a local file URI into bytes.
+ *
+ * fetch() on a `file://` URI is the approach in Supabase's own Expo guide, but
+ * on some Android builds it resolves with an empty body instead of failing —
+ * which would upload a 0-byte object and look like success. Check the length so
+ * the caller gets a real error it can show the user.
+ */
 async function readLocalFile(uri: string): Promise<ArrayBuffer> {
   const response = await fetch(uri);
   if (!response.ok) {
     throw new Error(`Could not read the selected file (${response.status}).`);
   }
-  return response.arrayBuffer();
+
+  const bytes = await response.arrayBuffer();
+  if (bytes.byteLength === 0) {
+    throw new Error('The selected file could not be read on this device.');
+  }
+  return bytes;
 }
 
 function extensionFor(uri: string, fallback: string): string {

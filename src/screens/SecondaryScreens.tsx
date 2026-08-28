@@ -6,6 +6,7 @@ import {
   Modal,
   Pressable,
   ScrollView,
+  StyleSheet,
   TextInput,
   View,
 } from 'react-native';
@@ -14,10 +15,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Avatar,
   HeaderBar,
+  IconButton,
   Pill,
   PrimaryButton,
 } from '../components/UIComponents';
+import * as DocumentPicker from 'expo-document-picker';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { AppImage } from '../components/AppImage';
+import { useToast } from '../components/Toast';
+import { awardPoints, createRecordingInSupabase } from '../lib/supabase';
+import { uploadFile, urlFor } from '../lib/uploads';
 import { EmptyState, SkeletonList } from '../components/States';
 import { getLeaderboard, LeaderboardRow } from '../lib/supabase';
 import { FilterKey, useAppStore } from '../context/AppStoreContext';
@@ -233,6 +240,32 @@ export function LeaderboardScreen({ onBack }: { onBack: () => void }) {
   );
 }
 
+/**
+ * Streams an uploaded recording (SRS 3.5b). Recordings live in a private
+ * bucket, so the caller passes a signed URL rather than a storage path.
+ */
+function LecturePlayer({ url, playing }: { url: string; playing: boolean }) {
+  const player = useVideoPlayer(url, (p) => {
+    p.loop = false;
+  });
+
+  useEffect(() => {
+    if (playing) {
+      player.play();
+    } else {
+      player.pause();
+    }
+  }, [playing, player]);
+
+  return (
+    <VideoView
+      player={player}
+      style={StyleSheet.absoluteFill}
+      contentFit="contain"
+      nativeControls={false}
+    />
+  );
+}
 export function RecordingsScreen({ onBack }: { onBack: () => void }) {
   const { profile, updateProfile } = useAppStore();
   const [searchQuery, setSearchQuery] = useState('');
@@ -241,6 +274,8 @@ export function RecordingsScreen({ onBack }: { onBack: () => void }) {
   const [isPlaying, setIsPlaying] = useState(true);
   const [speed, setSpeed] = useState<'1.0x' | '1.25x' | '1.5x' | '2.0x'>('1.0x');
   const [liveRecordings, setLiveRecordings] = useState<RecordedLecture[]>(sampleRecordings);
+  const toast = useToast();
+  const [uploading, setUploading] = useState(false);
   const [viewCounts, setViewCounts] = useState<Record<string, number>>({
     'rec-1': 1420,
     'rec-2': 980,
@@ -264,6 +299,7 @@ export function RecordingsScreen({ onBack }: { onBack: () => void }) {
             duration: r.duration,
             views: r.views || 100,
             thumbnail: r.thumbnail_url || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=800&q=80',
+            videoPath: r.video_url || undefined,
           }));
           setLiveRecordings(mapped);
         }
@@ -274,15 +310,81 @@ export function RecordingsScreen({ onBack }: { onBack: () => void }) {
     loadLiveRecordings();
   }, []);
 
+  const handleUploadRecording = async () => {
+    if (uploading) return;
+    try {
+      const picked = await DocumentPicker.getDocumentAsync({
+        type: 'video/*',
+        copyToCacheDirectory: true,
+      });
+      if (picked.canceled || !picked.assets?.length) return;
+
+      const file = picked.assets[0];
+      setUploading(true);
+
+      const { path } = await uploadFile({
+        bucket: 'recordings',
+        userId: profile.id || '',
+        uri: file.uri,
+        fileName: file.name || undefined,
+        contentType: file.mimeType || 'video/mp4',
+      });
+
+      const title = (file.name || 'Recorded session').replace(/\.[^.]+$/, '');
+      const { data, error } = await createRecordingInSupabase({
+        title,
+        tutor_name: profile.name || 'Tutor',
+        category: selectedCategory === 'All' ? 'Computer Science' : selectedCategory,
+        duration: '—',
+        video_url: path,
+      });
+      if (error) throw error;
+
+      setLiveRecordings((prev) => [
+        {
+          id: data?.id || path,
+          title,
+          tutor: profile.name || 'Tutor',
+          category: selectedCategory === 'All' ? 'Computer Science' : selectedCategory,
+          duration: '—',
+          views: 0,
+          thumbnail: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=800&q=80',
+          videoPath: path,
+        },
+        ...prev,
+      ]);
+
+      const earned = await awardPoints('resource_shared');
+      if (earned > 0) updateProfile({ points: (profile.points || 0) + earned });
+      toast.show(`Published "${title}"`);
+    } catch (err: any) {
+      toast.show(err?.message || 'Upload failed. Check your connection and try again.', 'error');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const filteredRecordings = liveRecordings.filter((rec) => {
     const matchesCategory = selectedCategory === 'All' || rec.category.toLowerCase().includes(selectedCategory.toLowerCase());
     const matchesSearch = !searchQuery.trim() || rec.title.toLowerCase().includes(searchQuery.toLowerCase()) || rec.tutor.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesCategory && matchesSearch;
   });
 
-  const handleOpenLecture = (rec: RecordedLecture) => {
+  const handleOpenLecture = async (rec: RecordedLecture) => {
     setSelectedVideo(rec);
     setIsPlaying(true);
+
+    // Recordings live in a private bucket, so playback needs a signed URL.
+    if (rec.videoPath && !rec.videoUrl) {
+      try {
+        const signed = await urlFor('recordings', rec.videoPath);
+        setSelectedVideo((current) =>
+          current && current.id === rec.id ? { ...current, videoUrl: signed } : current
+        );
+      } catch {
+        toast.show('Could not open this recording. Try again.', 'error');
+      }
+    }
     setViewCounts((prev) => ({
       ...prev,
       [rec.id]: (prev[rec.id] || rec.views) + 1,
@@ -300,7 +402,18 @@ export function RecordingsScreen({ onBack }: { onBack: () => void }) {
   return (
     <SafeAreaView style={styles.lightScreen}>
       <ScrollView contentContainerStyle={styles.screenContent}>
-        <HeaderBar title="Recorded Peer Lectures" onBack={onBack} />
+        <HeaderBar
+          title="Recorded Peer Lectures"
+          onBack={onBack}
+          rightElement={
+            <IconButton
+              icon={uploading ? "hourglass-outline" : "cloud-upload-outline"}
+              label="Upload a recording"
+              onPress={handleUploadRecording}
+              filled
+            />
+          }
+        />
         <Text style={styles.sectionSubline}>Stream or download recorded peer sessions and study guides.</Text>
 
         <View style={styles.inputGroup}>
@@ -356,7 +469,14 @@ export function RecordingsScreen({ onBack }: { onBack: () => void }) {
               </View>
 
               <View style={styles.videoPlayerScreen}>
-                <ImageBackground source={{ uri: selectedVideo.thumbnail }} style={styles.flexFill} imageStyle={{ opacity: 0.8 }}>
+                {selectedVideo.videoUrl ? (
+                  <LecturePlayer url={selectedVideo.videoUrl} playing={isPlaying} />
+                ) : null}
+                <ImageBackground
+                  source={{ uri: selectedVideo.thumbnail }}
+                  style={[styles.flexFill, selectedVideo.videoUrl ? { opacity: 0 } : undefined]}
+                  imageStyle={{ opacity: 0.8 }}
+                >
                   <View style={styles.videoPlayOverlay}>
                     <Pressable
                       onPress={() => setIsPlaying((prev) => !prev)}

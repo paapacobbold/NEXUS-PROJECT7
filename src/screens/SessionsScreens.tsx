@@ -30,6 +30,8 @@ import { tapMedium } from '../lib/haptics';
 import { useAppStore } from '../context/AppStoreContext';
 import { brand, DEFAULT_AVATAR, InPersonMeetup, liveSession, UserProfile } from '../data/mockData';
 import { fetchAllProfiles, getMessages, sendSupabaseMessage, subscribeToThreadMessages } from '../lib/supabase';
+import { ParticipantVideo } from '../components/ParticipantVideo';
+import { useVideoRoom } from '../lib/video';
 import { styles } from '../styles/appStyles';
 
 export function SessionsScreen({
@@ -42,7 +44,7 @@ export function SessionsScreen({
   onOpenFilters: () => void;
   onOpenSchedule: () => void;
   onOpenCreateMeetup: () => void;
-  onOpenLiveSession: () => void;
+  onOpenLiveSession: (sessionId?: string) => void;
   onOpenRecordings: () => void;
 }) {
   const { sessionsList, meetupsList, toggleRSVPMeetup } = useAppStore();
@@ -254,7 +256,14 @@ export function ScheduleSessionScreen({
   );
 }
 
-export function SessionLobbyScreen({ onLeave }: { onLeave: () => void }) {
+export function SessionLobbyScreen({
+  onLeave,
+  sessionId,
+}: {
+  onLeave: () => void;
+  /** The session being joined. Falls back to the seeded demo session. */
+  sessionId?: string;
+}) {
   const { profile } = useAppStore();
   const [permission, requestPermission] = useCameraPermissions();
   const [isMuted, setIsMuted] = useState(false);
@@ -271,8 +280,21 @@ export function SessionLobbyScreen({ onLeave }: { onLeave: () => void }) {
   const [draftChat, setDraftChat] = useState('');
   const [chatMessages, setChatMessages] = useState<{ id: string; sender: string; text: string; time: string }[]>([]);
   const [registeredPeers, setRegisteredPeers] = useState<UserProfile[]>([]);
+  const toast = useToast();
 
   const sessionThreadId = 'live-session-room';
+
+  // All call state comes from the active provider rather than local flags, so
+  // swapping in a real SDK needs no changes here.
+  // Every lobby used to join the same hard-coded room, so two different
+  // sessions would put their participants in one call.
+  const activeSessionId = sessionId || liveSession.id;
+
+  const room = useVideoRoom({
+    sessionId: activeSessionId,
+    displayName: profile?.name || 'You',
+    avatar: profile?.avatar,
+  });
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
@@ -329,6 +351,19 @@ export function SessionLobbyScreen({ onLeave }: { onLeave: () => void }) {
     };
   }, [profile?.id, profile?.name]);
 
+  // Mirror control changes into the provider so a real SDK publishes/unpublishes.
+  useEffect(() => {
+    room.setMuted(isMuted);
+  }, [isMuted]);
+
+  useEffect(() => {
+    room.setCameraEnabled(isCameraOn);
+  }, [isCameraOn]);
+
+  useEffect(() => {
+    room.setHandRaised(isHandRaised);
+  }, [isHandRaised]);
+
   const handleToggleCamera = async () => {
     if (!isCameraOn && !permission?.granted) {
       const res = await requestPermission();
@@ -339,6 +374,9 @@ export function SessionLobbyScreen({ onLeave }: { onLeave: () => void }) {
 
   const handleFlipCamera = () => {
     setCameraFacing((prev) => (prev === 'front' ? 'back' : 'front'));
+    // Without this the provider keeps publishing the original camera, so the
+    // button only flipped the preview and never the outgoing track.
+    room.switchCamera();
   };
 
   const triggerReaction = (emoji: string) => {
@@ -375,34 +413,27 @@ export function SessionLobbyScreen({ onLeave }: { onLeave: () => void }) {
   const activeHostAvatar = profile?.avatar || DEFAULT_AVATAR;
   const activeSessionTitle = liveSession.title || (profile?.name ? profile.name + "'s Live Study Session" : 'Live Peer Session');
 
-  // Build dynamic participants list from active profile and registered Supabase members
+  // The roster reflects who the provider reports as connected. It used to be
+  // assembled from every registered profile with alternating mute/camera flags,
+  // which showed people who were not in the call and states that were invented.
   const participantsList = [
     {
-      id: 'host',
-      name: activeHostName,
-      role: 'Host · Lead Tutor',
-      avatar: activeHostAvatar,
-      isMuted: false,
-      isCameraOn: true,
-      isHandRaised: false,
-    },
-    {
-      id: profile?.id || 'self',
+      id: 'self',
       name: (profile?.name || 'You') + ' (You)',
-      role: 'Co-Host',
+      role: 'You',
       avatar: profile?.avatar || DEFAULT_AVATAR,
       isMuted,
       isCameraOn,
       isHandRaised,
     },
-    ...registeredPeers.map((p, idx) => ({
-      id: p.id || `peer-${idx}`,
+    ...room.remotes.map((p) => ({
+      id: p.id,
       name: p.name,
-      role: p.major ? `${p.major} Student` : 'Peer Learner',
+      role: 'Participant',
       avatar: p.avatar || DEFAULT_AVATAR,
-      isMuted: isMutedAll ? true : idx % 2 === 0,
-      isCameraOn: idx % 3 !== 0,
-      isHandRaised: idx === 1,
+      isMuted: p.isMuted,
+      isCameraOn: p.isCameraOn,
+      isHandRaised: p.isHandRaised,
     })),
   ];
 
@@ -429,11 +460,23 @@ export function SessionLobbyScreen({ onLeave }: { onLeave: () => void }) {
           <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' }} />
           <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: '800' }}>● REC 00:42:15</Text>
           <View style={{ width: 1, height: 12, backgroundColor: '#374151', marginHorizontal: 4 }} />
-          <Ionicons name="shield-checkmark" size={14} color="#10B981" />
-          <Text style={{ color: '#9CA3AF', fontSize: 11 }}>Zoom Encrypted</Text>
+          <Ionicons
+            name={room.supportsRemoteMedia ? 'shield-checkmark' : 'eye-outline'}
+            size={14}
+            color={room.supportsRemoteMedia ? '#10B981' : '#F59E0B'}
+          />
+          <Text style={{ color: '#9CA3AF', fontSize: 11 }}>
+            {room.supportsRemoteMedia ? 'Encrypted' : 'Camera preview only'}
+          </Text>
         </View>
 
-        {/* View Mode Switcher */}
+        {room.status === 'failed' && room.error ? (
+        <View style={{ backgroundColor: '#7F1D1D', paddingHorizontal: 16, paddingVertical: 8 }}>
+          <Text style={{ color: '#FECACA', fontSize: 12 }}>{room.error}</Text>
+        </View>
+      ) : null}
+
+      {/* View Mode Switcher */}
         <View style={{ flexDirection: 'row', backgroundColor: '#1F2937', borderRadius: 8, padding: 2 }}>
           <Pressable
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -561,7 +604,9 @@ export function SessionLobbyScreen({ onLeave }: { onLeave: () => void }) {
                 backgroundColor: '#1F2937',
               }}
             >
-              {isCameraOn && permission?.granted ? (
+              {room.supportsRemoteMedia && room.local ? (
+                <ParticipantVideo participant={room.local} mirror={cameraFacing === 'front'} />
+              ) : isCameraOn && permission?.granted ? (
                 <CameraView facing={cameraFacing} style={{ width: '100%', height: '100%' }} />
               ) : isCameraOn ? (
                 <Image source={{ uri: profile.avatar }} style={{ width: '100%', height: '100%' }} />
@@ -618,7 +663,34 @@ export function SessionLobbyScreen({ onLeave }: { onLeave: () => void }) {
                     position: 'relative',
                   }}
                 >
-                  {item.id === (profile?.id || 'self') && isCameraOn && permission?.granted ? (
+                  {room.supportsRemoteMedia ? (
+                    <ParticipantVideo
+                      participant={
+                        item.id === 'self'
+                          ? room.local ?? {
+                              id: 'self',
+                              name: item.name,
+                              avatar: item.avatar,
+                              isLocal: true,
+                              isMuted: item.isMuted,
+                              isCameraOn: item.isCameraOn,
+                              isSpeaking: false,
+                              isHandRaised: item.isHandRaised,
+                            }
+                          : room.remotes.find((p) => p.id === item.id) ?? {
+                              id: item.id,
+                              name: item.name,
+                              avatar: item.avatar,
+                              isLocal: false,
+                              isMuted: item.isMuted,
+                              isCameraOn: item.isCameraOn,
+                              isSpeaking: false,
+                              isHandRaised: item.isHandRaised,
+                            }
+                      }
+                      mirror={item.id === 'self' && cameraFacing === 'front'}
+                    />
+                  ) : item.id === (profile?.id || 'self') && isCameraOn && permission?.granted ? (
                     <CameraView facing={cameraFacing} style={{ width: '100%', height: '100%' }} />
                   ) : (
                     <Image source={{ uri: item.avatar }} style={{ width: '100%', height: '100%' }} />
@@ -985,7 +1057,12 @@ export function SessionLobbyScreen({ onLeave }: { onLeave: () => void }) {
           {/* Roster Controls Bar */}
           <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingVertical: 10 }}>
             <Pressable
-              onPress={() => setIsMutedAll((prev) => !prev)}
+              onPress={() =>
+                toast.show(
+                  'Muting everyone needs host controls on the server — not deployed yet.',
+                  'info'
+                )
+              }
               style={{
                 flex: 1,
                 backgroundColor: isMutedAll ? '#EF4444' : '#374151',

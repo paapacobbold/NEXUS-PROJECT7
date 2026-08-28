@@ -277,7 +277,7 @@ export async function createCommunityPost(
 /** Live post feed for a community. Returns an unsubscribe function. */
 export function subscribeToCommunityPosts(
   communityId: string,
-  onNewPost: (post: CommunityPost) => void
+  onNewPost: (post: CommunityPost, authorId: string | null) => void
 ) {
   const client = getSupabaseClient();
   if (!client || !communityId) return () => {};
@@ -294,15 +294,18 @@ export function subscribeToCommunityPosts(
       },
       (payload: any) => {
         const row = payload.new;
-        onNewPost({
-          id: row.id || `post-${Date.now()}`,
-          author: 'Member',
-          role: 'Student',
-          time: 'Just now',
-          title: row.title || '',
-          body: row.body || '',
-          stats: '',
-        });
+        onNewPost(
+          {
+            id: row.id || `post-${Date.now()}`,
+            author: 'Member',
+            role: 'Student',
+            time: 'Just now',
+            title: row.title || '',
+            body: row.body || '',
+            stats: '',
+          },
+          row.author_id || null
+        );
       }
     )
     .subscribe();
@@ -371,10 +374,21 @@ export async function registerDeviceToken(token: string, platform: string) {
 
 // --- PROGRESS TRACKING (SRS 3.9) ---
 
-/** Records that the user joined a session. Safe to call more than once. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Records that the user joined a session. Safe to call more than once.
+ *
+ * sessions.id is a UUID, so a seeded mock id like 'live-1' would be rejected by
+ * Postgres and the write would fail silently — guard rather than round-trip.
+ */
 export async function recordSessionAttendance(sessionId: string) {
   const client = getSupabaseClient();
   if (!client || !sessionId) return;
+  if (!UUID_RE.test(sessionId)) {
+    console.warn('Skipping attendance for non-persisted session:', sessionId);
+    return;
+  }
   try {
     const { data: userData } = await client.auth.getUser();
     const userId = userData?.user?.id;
@@ -399,17 +413,28 @@ export type PointsReason =
   | 'daily_task'
   | 'meetup_attended';
 
-/** Appends to the points ledger. Totals are derived, never trusted from the client. */
-export async function awardPoints(points: number, reason: PointsReason, refId?: string) {
+/**
+ * Awards points for an action.
+ *
+ * The amount is decided by the award_points() database function, not passed
+ * from here — a client that could write the ledger directly could award itself
+ * any number of points and top the leaderboard.
+ *
+ * Returns the points actually granted, or 0 if the call did not go through.
+ */
+export async function awardPoints(reason: PointsReason, refId?: string): Promise<number> {
   const client = getSupabaseClient();
-  if (!client) return;
+  if (!client) return 0;
   try {
-    const { data: userData } = await client.auth.getUser();
-    const userId = userData?.user?.id;
-    if (!userId) return;
-    await client.from('points_ledger').insert([{ user_id: userId, points, reason, ref_id: refId || null }]);
+    const { data, error } = await client.rpc('award_points', {
+      p_reason: reason,
+      p_ref: refId || null,
+    });
+    if (error) throw error;
+    return typeof data === 'number' ? data : 0;
   } catch (err) {
     console.warn('Points award warning:', err);
+    return 0;
   }
 }
 
@@ -934,6 +959,6 @@ export async function createRecordingInSupabase(recording: {
 }) {
   const client = getSupabaseClient();
   if (!client) return { data: null, error: new Error('Supabase not configured') };
-  return client.from('recordings').insert([recording]);
+  return client.from('recordings').insert([recording]).select('*').single();
 }
 

@@ -58,7 +58,7 @@ export function HomeScreen({
   onOpenNotifications?: () => void;
   onOpenFilters?: () => void;
   onOpenProfile?: () => void;
-  onOpenLiveSession?: () => void;
+  onOpenLiveSession?: (sessionId?: string) => void;
   onOpenCommunity?: () => void;
   onOpenLeaderboard?: () => void;
   onOpenRecordings?: () => void;
@@ -253,7 +253,7 @@ export function HomeScreen({
       {/* Dynamic Account Active Live Session Card */}
       <Pressable
         hitSlop={hitSlop}
-        onPress={onOpenLiveSession}
+        onPress={() => onOpenLiveSession?.()}
         style={({ pressed }) => [styles.liveCard, pressed && { opacity: 0.88, transform: [{ scale: 0.98 }] }]}
       >
         <View style={styles.liveBadge}>
@@ -284,7 +284,7 @@ export function HomeScreen({
             <Pressable
               key={session.id}
               hitSlop={hitSlop}
-              onPress={onOpenLiveSession}
+              onPress={() => onOpenLiveSession?.(session.id)}
               style={({ pressed }) => [styles.sessionCard, pressed && { opacity: 0.8, transform: [{ scale: 0.96 }] }]}
             >
               <Avatar source={session.image} size={34} />

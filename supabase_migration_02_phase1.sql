@@ -105,18 +105,24 @@ CREATE INDEX IF NOT EXISTS points_ledger_user_idx
     ON public.points_ledger (user_id, created_at DESC);
 
 -- Leaderboard reads this instead of the mock array in the app.
-CREATE OR REPLACE VIEW public.leaderboard AS
+--
+-- Aggregated with scalar subqueries, NOT two LEFT JOINs: joining both
+-- points_ledger and session_attendance produces a cartesian product, and
+-- SUM(points) would then be multiplied by the number of sessions attended.
+DROP VIEW IF EXISTS public.leaderboard;
+CREATE VIEW public.leaderboard AS
 SELECT
     p.id,
     p.full_name,
     p.avatar_url,
     p.university,
-    COALESCE(SUM(l.points), 0)::INTEGER AS total_points,
-    COUNT(DISTINCT a.session_id)::INTEGER AS sessions_attended
+    COALESCE((
+        SELECT SUM(l.points) FROM public.points_ledger l WHERE l.user_id = p.id
+    ), 0)::INTEGER AS total_points,
+    COALESCE((
+        SELECT COUNT(*) FROM public.session_attendance a WHERE a.user_id = p.id
+    ), 0)::INTEGER AS sessions_attended
 FROM public.profiles p
-LEFT JOIN public.points_ledger l ON l.user_id = p.id
-LEFT JOIN public.session_attendance a ON a.user_id = p.id
-GROUP BY p.id, p.full_name, p.avatar_url, p.university
 ORDER BY total_points DESC;
 
 -- 16. TUTOR RATINGS & REVIEWS (SRS 3.10)
@@ -286,14 +292,55 @@ DROP POLICY IF EXISTS "Users record own attendance" ON public.session_attendance
 CREATE POLICY "Users record own attendance" ON public.session_attendance
     FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
--- Points: totals are public (the leaderboard needs them); only the owner's own
--- rows are writable from the client.
+-- Points: totals are public (the leaderboard needs them). Writes go through
+-- award_points() below — a client with an INSERT policy could simply award
+-- itself a million points and top the leaderboard.
 DROP POLICY IF EXISTS "Points readable by signed-in users" ON public.points_ledger;
 CREATE POLICY "Points readable by signed-in users" ON public.points_ledger
     FOR SELECT USING (auth.role() = 'authenticated');
+
+-- Explicitly remove the client's ability to write the ledger directly.
 DROP POLICY IF EXISTS "Users earn own points" ON public.points_ledger;
-CREATE POLICY "Users earn own points" ON public.points_ledger
-    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+/**
+ * The server decides how many points each action is worth, so the amount can
+ * never be supplied by the client. Called from the app via
+ * supabase.rpc('award_points', ...).
+ */
+CREATE OR REPLACE FUNCTION public.award_points(p_reason TEXT, p_ref UUID DEFAULT NULL)
+RETURNS INTEGER
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $
+DECLARE
+    v_points INTEGER;
+BEGIN
+    IF auth.uid() IS NULL THEN
+        RAISE EXCEPTION 'Not signed in';
+    END IF;
+
+    v_points := CASE p_reason
+        WHEN 'session_attended' THEN 40
+        WHEN 'post_created'     THEN 30
+        WHEN 'comment_created'  THEN 10
+        WHEN 'resource_shared'  THEN 50
+        WHEN 'daily_task'       THEN 25
+        WHEN 'meetup_attended'  THEN 35
+        ELSE NULL
+    END;
+
+    IF v_points IS NULL THEN
+        RAISE EXCEPTION 'Unknown points reason: %', p_reason;
+    END IF;
+
+    INSERT INTO public.points_ledger (user_id, points, reason, ref_id)
+    VALUES (auth.uid(), v_points, p_reason, p_ref);
+
+    RETURN v_points;
+END;
+$;
+
+GRANT EXECUTE ON FUNCTION public.award_points(TEXT, UUID) TO authenticated;
 
 -- Ratings: public to read, but you cannot rate yourself.
 DROP POLICY IF EXISTS "Ratings readable by everyone" ON public.ratings;
@@ -388,5 +435,21 @@ CREATE POLICY "Organizers or admins delete meetups" ON public.meetups
 -- H. REALTIME
 -- ============================================================================
 
-ALTER PUBLICATION supabase_realtime ADD TABLE public.posts;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.post_comments;
+-- ALTER PUBLICATION ... ADD TABLE errors if the table is already a member, so
+-- guard it to keep this file genuinely re-runnable.
+DO $
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables
+        WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'posts'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.posts;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables
+        WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'post_comments'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.post_comments;
+    END IF;
+END $;
