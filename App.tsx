@@ -125,6 +125,7 @@ export default function App() {
   const [threads, setThreads] = useState(threadPreviews);
   const [messagesByThread, setMessagesByThread] = useState(threadMessages);
   const [activeThreadId, setActiveThreadId] = useState<string>('');
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [selectedFilters, setSelectedFilters] = useState(initialFilters);
   const [communitiesList, setCommunitiesList] = useState(initialCommunities);
   const [sessionsList, setSessionsList] = useState(initialUpcomingSessions);
@@ -675,7 +676,10 @@ export default function App() {
               onOpenNotifications={() => setShowNotifications(true)}
               onOpenFilters={() => push('filters')}
               onOpenProfile={() => push('edit-profile')}
-              onOpenLiveSession={() => push('session-lobby')}
+              onOpenLiveSession={(sessionId?: string) => {
+                setActiveSessionId(sessionId ?? null);
+                push('session-lobby');
+              }}
               onOpenCommunity={() => push('community-details')}
               onOpenLeaderboard={() => push('leaderboard')}
               onOpenRecordings={() => push('recordings')}
@@ -698,7 +702,10 @@ export default function App() {
               onOpenFilters={() => push('filters')}
               onOpenSchedule={() => push('schedule-session')}
               onOpenCreateMeetup={() => push('create-meetup')}
-              onOpenLiveSession={() => push('session-lobby')}
+              onOpenLiveSession={(sessionId?: string) => {
+                setActiveSessionId(sessionId ?? null);
+                push('session-lobby');
+              }}
               onOpenRecordings={() => push('recordings')}
             />
           </MainShell>
@@ -757,7 +764,12 @@ export default function App() {
       case 'private-chat':
         return <PrivateChatScreen onBack={goBack} threadId={currentThreadId} />;
       case 'session-lobby':
-        return <SessionLobbyScreen onLeave={() => goBack()} />;
+        return (
+          <SessionLobbyScreen
+            sessionId={activeSessionId ?? undefined}
+            onLeave={() => goBack()}
+          />
+        );
       case 'edit-profile':
         return <EditProfileScreen onBack={goBack} onSave={() => goBack()} />;
       case 'change-password':

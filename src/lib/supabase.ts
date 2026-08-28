@@ -374,10 +374,21 @@ export async function registerDeviceToken(token: string, platform: string) {
 
 // --- PROGRESS TRACKING (SRS 3.9) ---
 
-/** Records that the user joined a session. Safe to call more than once. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Records that the user joined a session. Safe to call more than once.
+ *
+ * sessions.id is a UUID, so a seeded mock id like 'live-1' would be rejected by
+ * Postgres and the write would fail silently — guard rather than round-trip.
+ */
 export async function recordSessionAttendance(sessionId: string) {
   const client = getSupabaseClient();
   if (!client || !sessionId) return;
+  if (!UUID_RE.test(sessionId)) {
+    console.warn('Skipping attendance for non-persisted session:', sessionId);
+    return;
+  }
   try {
     const { data: userData } = await client.auth.getUser();
     const userId = userData?.user?.id;
@@ -948,6 +959,6 @@ export async function createRecordingInSupabase(recording: {
 }) {
   const client = getSupabaseClient();
   if (!client) return { data: null, error: new Error('Supabase not configured') };
-  return client.from('recordings').insert([recording]);
+  return client.from('recordings').insert([recording]).select('*').single();
 }
 

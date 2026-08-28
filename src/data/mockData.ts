@@ -276,6 +276,10 @@ export type RecordedLecture = {
   duration: string;
   views: number;
   thumbnail: string;
+  /** Storage object path, resolved to a signed URL for playback. */
+  videoPath?: string;
+  /** Playable URL once resolved. Absent for the seeded sample lectures. */
+  videoUrl?: string;
 };
 
 export type LeaderboardUser = {
