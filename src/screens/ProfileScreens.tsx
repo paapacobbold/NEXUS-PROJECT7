@@ -13,6 +13,7 @@ import {
 import { Text } from '../components/Typography';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppImage } from '../components/AppImage';
+import { uploadFile } from '../lib/uploads';
 import { useToast } from '../components/Toast';
 import { notifyError } from '../lib/haptics';
 import {
@@ -274,11 +275,28 @@ export function EditProfileScreen({
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const selectedUri = result.assets[0].uri;
+
+        // Show the local file straight away, then swap in the hosted URL. The
+        // local file:// URI is device-only, so persisting it produced a broken
+        // avatar everywhere else.
         updateField('avatar', selectedUri);
         setShowAvatarModal(false);
+
+        const { url } = await uploadFile({
+          bucket: 'avatars',
+          userId: profile.id || '',
+          uri: selectedUri,
+          contentType: 'image/jpeg',
+          fileName: 'avatar.jpg',
+        });
+        updateField('avatar', url);
+        toast.show('Profile picture updated');
       }
     } catch (err) {
-      console.warn('Error picking image:', err);
+      toast.show(
+        err instanceof Error ? err.message : 'Could not update your picture. Try again.',
+        'error'
+      );
     } finally {
       setLoadingPic(false);
     }

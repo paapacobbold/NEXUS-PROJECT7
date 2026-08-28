@@ -56,6 +56,8 @@ export type MessageItem = {
   time: string;
 };
 
+export type SkillLevel = 'Beginner' | 'Intermediate' | 'Advanced';
+
 export type UserProfile = {
   id?: string;
   name: string;
@@ -65,6 +67,10 @@ export type UserProfile = {
   year: string;
   bio: string;
   skills: string[];
+  /** SRS 3.1 requires interests alongside skills — they drive recommendations. */
+  interests: string[];
+  /** SRS 3.1: self-declared proficiency, also a recommendation input. */
+  skillLevel: SkillLevel;
   rating: string;
   points: number;
   sessions: number;
@@ -132,6 +138,8 @@ export const currentUser: UserProfile = {
   year: '3rd Year',
   bio: 'Passionate about algorithms and distributed systems. Love helping others understand complex concepts.',
   skills: ['Python', 'Data Structures', 'Calculus', 'Linear Algebra'],
+  interests: ['Algorithms', 'Machine Learning', 'Competitive Programming'],
+  skillLevel: 'Advanced',
   rating: '4.8',
   points: 1240,
   sessions: 31,

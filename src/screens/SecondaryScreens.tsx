@@ -18,8 +18,10 @@ import {
   PrimaryButton,
 } from '../components/UIComponents';
 import { AppImage } from '../components/AppImage';
+import { EmptyState, SkeletonList } from '../components/States';
+import { getLeaderboard, LeaderboardRow } from '../lib/supabase';
 import { FilterKey, useAppStore } from '../context/AppStoreContext';
-import { brand, filterSections, RecordedLecture, sampleLeaderboard, sampleRecordings } from '../data/mockData';
+import { brand, filterSections, RecordedLecture, sampleRecordings } from '../data/mockData';
 import { styles } from '../styles/appStyles';
 
 function toTitleCase(value: string) {
@@ -36,6 +38,24 @@ function getLevelTier(points: number) {
 
 export function LeaderboardScreen({ onBack }: { onBack: () => void }) {
   const { profile, updateProfile } = useAppStore();
+  // Was rendering the mock `sampleLeaderboard` array; now reads the aggregated
+  // leaderboard view built from the points ledger and attendance table.
+  const [leaders, setLeaders] = useState<LeaderboardRow[]>([]);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    getLeaderboard()
+      .then((rows) => {
+        if (active) setLeaders(rows);
+      })
+      .finally(() => {
+        if (active) setLeaderboardLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
   const [showPerkStore, setShowPerkStore] = useState(false);
   const [claimedVoucher, setClaimedVoucher] = useState<{ title: string; code: string } | null>(null);
 
@@ -101,17 +121,42 @@ export function LeaderboardScreen({ onBack }: { onBack: () => void }) {
         </Pressable>
 
         <Text style={styles.sectionTitle}>Top Campus Tutors & Peers</Text>
-        {sampleLeaderboard.map((item) => (
-          <View key={item.name} style={[styles.threadRow, { backgroundColor: '#fff', padding: 14, borderRadius: 16, marginBottom: 8 }]}>
-            <Text style={{ fontSize: 16, fontWeight: '800', width: 28, color: item.rank === 1 ? '#E07038' : brand.text }}>#{item.rank}</Text>
-            <Avatar source={item.avatar} size={40} />
-            <View style={styles.flexFill}>
-              <Text style={styles.threadName}>{item.name}</Text>
-              <Text style={styles.mutedCopySmall}>{item.role}</Text>
+        {leaderboardLoading ? (
+          <SkeletonList count={4} lines={2} />
+        ) : leaders.length === 0 ? (
+          <EmptyState
+            icon="trophy-outline"
+            title="No rankings yet"
+            message="Attend a session or post in a community to put yourself on the board."
+            compact
+          />
+        ) : (
+          leaders.map((item, index) => (
+            <View
+              key={item.id}
+              style={[styles.threadRow, { backgroundColor: '#fff', padding: 14, borderRadius: 16, marginBottom: 8 }]}
+            >
+              <Text
+                style={{
+                  fontSize: 16,
+                  fontWeight: '800',
+                  width: 28,
+                  color: index === 0 ? '#E07038' : brand.text,
+                }}
+              >
+                #{index + 1}
+              </Text>
+              <Avatar source={item.avatar} size={40} />
+              <View style={styles.flexFill}>
+                <Text style={styles.threadName}>{item.name}</Text>
+                <Text style={styles.mutedCopySmall}>
+                  {item.sessions} session{item.sessions === 1 ? '' : 's'} · {item.university}
+                </Text>
+              </View>
+              <Pill label={`${item.points} pts`} tint="#E6F4EA" textColor="#137333" />
             </View>
-            <Pill label={`${item.points} pts`} tint="#E6F4EA" textColor="#137333" />
-          </View>
-        ))}
+          ))
+        )}
       </ScrollView>
 
       {/* Campus Perk Store Modal */}
