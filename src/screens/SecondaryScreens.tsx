@@ -120,7 +120,7 @@ export function LeaderboardScreen({ onBack }: { onBack: () => void }) {
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <View>
-                <Text style={styles.modalTitle}>Campus Perk Store 🎁</Text>
+                <Text style={styles.modalTitle}>Campus Perk Store</Text>
                 <Text style={styles.mutedCopySmall}>Available Balance: {profile.points} XP Points</Text>
               </View>
               <Pressable onPress={() => { setShowPerkStore(false); setClaimedVoucher(null); }}>
@@ -130,7 +130,7 @@ export function LeaderboardScreen({ onBack }: { onBack: () => void }) {
 
             {claimedVoucher ? (
               <View style={{ gap: 12, alignItems: 'center', paddingVertical: 10 }}>
-                <Text style={{ fontSize: 18, fontWeight: '800', color: '#137333' }}>🎉 Perk Claimed Successfully!</Text>
+                <Text style={{ fontSize: 18, fontWeight: '800', color: '#137333' }}>Perk Claimed Successfully!</Text>
                 <Text style={[styles.mutedCopy, { textAlign: 'center' }]}>{claimedVoucher.title}</Text>
 
                 <View style={styles.voucherCodeBox}>

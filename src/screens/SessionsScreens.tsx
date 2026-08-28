@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Feather, Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useState } from 'react';
@@ -86,7 +86,10 @@ export function SessionsScreen({
           <Text style={{ fontSize: 11, color: brand.muted, marginTop: 2 }}>In-person peer study</Text>
         </Pressable>
         <Pressable onPress={onOpenRecordings} style={[styles.flexFill, { backgroundColor: '#F5EFFD', padding: 12, borderRadius: 16, borderWidth: 1, borderColor: '#E3D3FB' }]}>
-          <Text style={{ fontSize: 13, fontWeight: '700', color: '#6B21A8' }}>▶ Watch Recordings</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Feather name="play" size={13} color="#6B21A8" />
+            <Text style={{ fontSize: 13, fontWeight: '700', color: '#6B21A8' }}>Watch Recordings</Text>
+          </View>
           <Text style={{ fontSize: 11, color: brand.muted, marginTop: 2 }}>Video modules</Text>
         </Pressable>
       </View>
@@ -116,12 +119,18 @@ export function SessionsScreen({
         <View key={meetup.id} style={[styles.sessionListCard, { gap: 8 }]}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <Pressable onPress={() => setSelectedMeetupMap(meetup)} style={{ flex: 1, flexShrink: 1 }}>
-              <Text numberOfLines={1} style={[styles.communityName, { color: brand.primary, flexShrink: 1 }]}>📍 {meetup.title}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flex: 1 }}>
+                <Feather name="map-pin" size={14} color={brand.primary} />
+                <Text numberOfLines={1} style={[styles.communityName, { color: brand.primary, flexShrink: 1 }]}>{meetup.title}</Text>
+              </View>
             </Pressable>
             <Pill label={`${meetup.rsvpCount} Attending`} compact />
           </View>
           <Text style={styles.mutedCopySmall}>Location: {meetup.location}</Text>
-          <Text style={styles.sessionTime}>🗓 {meetup.dateTime} · Host: {meetup.organizer}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Feather name="calendar" size={13} color={brand.muted} />
+            <Text style={styles.sessionTime}>{meetup.dateTime} · Host: {meetup.organizer}</Text>
+          </View>
 
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
             <Pressable
@@ -137,7 +146,7 @@ export function SessionsScreen({
               style={{ backgroundColor: meetup.rsvpStatus ? '#D9F4DE' : brand.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 }}
             >
               <Text style={{ fontSize: 12, fontWeight: '700', color: meetup.rsvpStatus ? '#2F8B4E' : '#fff' }}>
-                {meetup.rsvpStatus ? '✓ RSVP Confirmed' : 'RSVP (+50 Pts)'}
+                {meetup.rsvpStatus ? 'RSVP Confirmed' : 'RSVP (+50 Pts)'}
               </Text>
             </Pressable>
           </View>
@@ -180,7 +189,7 @@ export function SessionsScreen({
               {/* Walking Directions Banner */}
               <View style={styles.directionsCard}>
                 <Ionicons name="walk-outline" size={20} color="#1E40AF" />
-                <Text style={styles.directionsText}>🚶 ~3 min walk from Main Campus Science Complex</Text>
+                <Text style={styles.directionsText}>~3 min walk from Main Campus Science Complex</Text>
               </View>
 
               <Text style={{ color: brand.text, fontSize: 13 }}>
@@ -188,7 +197,7 @@ export function SessionsScreen({
               </Text>
 
               <PrimaryButton
-                label={selectedMeetupMap.rsvpStatus ? '✓ Going (RSVP Confirmed)' : 'RSVP to Attend (+50 Pts)'}
+                label={selectedMeetupMap.rsvpStatus ? 'Going (RSVP Confirmed)' : 'RSVP to Attend (+50 Pts)'}
                 onPress={() => {
                   handleRSVP(selectedMeetupMap);
                   setSelectedMeetupMap(null);
@@ -508,7 +517,10 @@ export function SessionLobbyScreen({ onLeave }: { onLeave: () => void }) {
 
                 {isHandRaised ? (
                   <View style={{ backgroundColor: '#F97316', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 12 }}>✋ Hand Raised</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <Ionicons name="hand-left-outline" size={14} color="#FFFFFF" />
+                      <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 12 }}>Hand Raised</Text>
+                    </View>
                   </View>
                 ) : null}
               </View>
@@ -1033,7 +1045,7 @@ export function SessionLobbyScreen({ onLeave }: { onLeave: () => void }) {
                   <Text style={{ color: '#9CA3AF', fontSize: 12 }}>{p.role}</Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  {p.isHandRaised ? <Text style={{ fontSize: 16 }}>✋</Text> : null}
+                  {p.isHandRaised ? <Ionicons name="hand-left-outline" size={16} color="#F97316" /> : null}
                   <Ionicons
                     name={p.isMuted ? 'mic-off' : 'mic'}
                     size={18}

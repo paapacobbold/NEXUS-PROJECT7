@@ -357,7 +357,7 @@ export function CommunityDetailScreen({
 
           <Pressable hitSlop={defaultHitSlop} onPress={() => setShowResources(true)} style={({ pressed }) => [[styles.sharePrompt, { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }], pressed && { opacity: 0.8 }]}>
             <Ionicons name="document-attach-outline" size={20} color={brand.primary} />
-            <Text style={{ fontSize: 13, fontWeight: '700', color: brand.primary }}>📄 Download Study Materials & PDFs (+20 XP)</Text>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: brand.primary }}>Download Study Materials & PDFs (+20 XP)</Text>
           </Pressable>
 
           {postsFeedList.length === 0 ? (
@@ -403,7 +403,7 @@ export function CommunityDetailScreen({
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.modalTitle}>Study Materials & PDFs 📄</Text>
+                <Text style={styles.modalTitle}>Study Materials & PDFs</Text>
                 <Text style={styles.mutedCopySmall}>Course formula sheets, slides & solved exams</Text>
               </View>
               <Pressable hitSlop={defaultHitSlop} onPress={() => setShowResources(false)}>
@@ -461,7 +461,7 @@ export function CommunityDetailScreen({
                       ]}
                     >
                       <Text style={{ fontSize: 12, fontWeight: '800', color: isDone ? '#137333' : '#fff' }}>
-                        {isDone ? '✓ Downloaded' : 'PDF (+20 XP)'}
+                        {isDone ? 'Downloaded' : 'PDF (+20 XP)'}
                       </Text>
                     </Pressable>
                   </View>

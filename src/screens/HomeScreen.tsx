@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Feather, Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
   Image,
@@ -132,7 +132,7 @@ export function HomeScreen({
       <View style={styles.topRow}>
         <View>
           <Text style={styles.mutedCopy}>Good afternoon,</Text>
-          <Text style={styles.titleLarge}>{profile.name.split(' ')[0] || 'Learner'} 👋</Text>
+          <Text style={styles.titleLarge}>{profile.name.split(' ')[0] || 'Learner'}</Text>
         </View>
         <View style={styles.topActionRow}>
           <IconButton icon="search" onPress={onOpenSearch || onOpenFilters || (() => {})} />
@@ -153,7 +153,7 @@ export function HomeScreen({
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Ionicons name="flame" size={22} color="#E07038" />
-            <Text style={{ fontSize: 15, fontWeight: '800', color: brand.text }}>🔥 {profile.streak || '5-Day Active Streak'}</Text>
+            <Text style={{ fontSize: 15, fontWeight: '800', color: brand.text }}>{profile.streak || '5-Day Active Streak'}</Text>
           </View>
           <Pill label={`${loggedHours.toFixed(1)} / 3.0 Hrs Today`} compact tint="#EBF7EE" textColor="#2F8B4E" />
         </View>
@@ -307,7 +307,10 @@ export function HomeScreen({
             </View>
             <Pill label={`${meetup.rsvpCount} Attending`} compact />
           </View>
-          <Text style={styles.mutedCopySmall}>📍 {meetup.location} · {meetup.dateTime}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Feather name="map-pin" size={12} color={brand.muted} />
+            <Text style={styles.mutedCopySmall}>{meetup.location} · {meetup.dateTime}</Text>
+          </View>
           <Pressable
             hitSlop={hitSlop}
             onPress={() => {
@@ -324,7 +327,7 @@ export function HomeScreen({
             ]}
           >
             <Text style={{ fontSize: 12, fontWeight: '700', color: meetup.rsvpStatus ? '#2F8B4E' : '#fff' }}>
-              {meetup.rsvpStatus ? '✓ Going' : '+ RSVP (+50 Pts)'}
+              {meetup.rsvpStatus ? 'Going' : '+ RSVP (+50 Pts)'}
             </Text>
           </Pressable>
         </View>

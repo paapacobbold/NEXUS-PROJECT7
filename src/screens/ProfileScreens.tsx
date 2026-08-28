@@ -116,7 +116,7 @@ export function ProfileScreen({
 
             <View style={[styles.levelBadgeChip, { marginTop: 6 }]}>
               <Text style={styles.levelBadgeText}>
-                {profile.points >= 1000 ? 'Level 5: Campus Legend 🏆' : profile.points >= 750 ? 'Level 4: Scholar 🎓' : profile.points >= 500 ? 'Level 3: Master Peer ⭐' : profile.points >= 250 ? 'Level 2: Study Mentor ⚡' : 'Level 1: Academic Novice 📘'}
+                {profile.points >= 1000 ? 'Level 5: Campus Legend' : profile.points >= 750 ? 'Level 4: Scholar' : profile.points >= 500 ? 'Level 3: Master Peer' : profile.points >= 250 ? 'Level 2: Study Mentor' : 'Level 1: Academic Novice'}
               </Text>
             </View>
           </View>
@@ -377,7 +377,7 @@ export function EditProfileScreen({
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Change Profile Picture 📷</Text>
+              <Text style={styles.modalTitle}>Change Profile Picture</Text>
               <Pressable onPress={() => setShowAvatarModal(false)}>
                 <Ionicons name="close-circle" size={26} color={brand.muted} />
               </Pressable>

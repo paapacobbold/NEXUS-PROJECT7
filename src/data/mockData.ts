@@ -245,9 +245,9 @@ export const filterSections = {
 };
 
 export const profileBadges = [
-  { id: 'b1', emoji: '🚀', label: 'Early\nAdopter' },
-  { id: 'b2', emoji: '⭐', label: 'Top\nContributor' },
-  { id: 'b3', emoji: '🎓', label: '10\nSessions' },
+  { id: 'b1', icon: 'zap', label: 'Early\nAdopter' },
+  { id: 'b2', icon: 'star', label: 'Top\nContributor' },
+  { id: 'b3', icon: 'award', label: '10\nSessions' },
 ];
 
 export type InPersonMeetup = {
