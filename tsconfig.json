@@ -2,7 +2,13 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
-    "types": ["jest"]
+    "types": ["jest"],
+    // Expo Metro resolves these aliases natively (docs: Expo SDK 57 TypeScript guide).
+    "ignoreDeprecations": "6.0",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
   },
   "exclude": [
     "node_modules",

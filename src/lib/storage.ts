@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { CommunityItem, InPersonMeetup, NotificationPrefs, UserProfile } from '../data/mockData';
-import { ThemeMode } from '../context/AppStoreContext';
+import { CommunityItem, InPersonMeetup, NotificationPrefs, UserProfile } from '@/data/mockData';
+import { ThemeMode } from '@/context/AppStoreContext';
 
 const KEYS = {
   THEME: '@nexus_theme',

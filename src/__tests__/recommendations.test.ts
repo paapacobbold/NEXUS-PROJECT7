@@ -1,9 +1,9 @@
-import { CommunityItem, SessionItem, UserProfile } from '../data/mockData';
+import { CommunityItem, SessionItem, UserProfile } from '@/data/mockData';
 import {
   recommendCommunities,
   recommendSessions,
   recommendTutors,
-} from '../lib/recommendations';
+} from '@/lib/recommendations';
 
 function community(over: Partial<CommunityItem> & { id: string; name: string; subject: string }): CommunityItem {
   return {

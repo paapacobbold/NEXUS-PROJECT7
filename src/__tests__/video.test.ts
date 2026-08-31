@@ -1,5 +1,5 @@
-import { LocalPreviewProvider } from '../lib/video/localPreviewProvider';
-import { VideoProvider } from '../lib/video/types';
+import { LocalPreviewProvider } from '@/lib/video/localPreviewProvider';
+import { VideoProvider } from '@/lib/video/types';
 
 /**
  * Pins the VideoProvider contract. A real SDK provider must satisfy the same

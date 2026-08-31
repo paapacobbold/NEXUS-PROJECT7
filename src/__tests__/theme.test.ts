@@ -1,4 +1,4 @@
-import { applyThemeStyles, getThemeColors, styles } from '../styles/appStyles';
+import { applyThemeStyles, getThemeColors, styles } from '@/styles/appStyles';
 
 /**
  * The shared stylesheet is a Proxy onto a per-theme build that App.tsx swaps

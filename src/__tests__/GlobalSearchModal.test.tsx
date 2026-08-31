@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, fireEvent } from '@testing-library/react-native';
-import { GlobalSearchModal } from '../components/GlobalSearchModal';
-import { AppStoreContext, AppStore } from '../context/AppStoreContext';
+import { GlobalSearchModal } from '@/components/overlays';
+import { AppStoreContext, AppStore } from '@/context/AppStoreContext';
 
 const mockAppStore: AppStore = {
   isLoadingData: false,

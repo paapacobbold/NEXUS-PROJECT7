@@ -1,4 +1,4 @@
-import { CommunityItem, SessionItem, UserProfile } from '../data/mockData';
+import { CommunityItem, SessionItem, UserProfile } from '@/data/mockData';
 
 /**
  * Recommendation scoring (SRS 3.4).

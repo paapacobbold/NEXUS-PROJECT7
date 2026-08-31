@@ -71,35 +71,60 @@ A state-of-the-art, cross-platform mobile application built with **Expo (React N
 
 ## 🛠️ Project Structure
 
+Every module is grouped by the feature it serves. Screens live one-per-file
+under `src/screens/<feature>/`, each folder exposing its screens through an
+`index.ts` barrel, so `import { HomeScreen } from '@/screens/home'` is all a
+caller ever needs to know.
+
+Imports use the `@/*` path alias for `src/*` (configured in `tsconfig.json`, and
+resolved natively by Expo's Metro bundler), so no file reaches back through
+`../../..` to find a sibling module.
+
 ```text
 NEXUS-mobile-main/
-├── App.tsx                        # Root App Shell, Navigation & Providers
-├── app.json                       # Expo Application Manifest
-├── eas.json                       # EAS Build Profiles (Development, Preview, Production)
-├── package.json                   # Dependencies & Build Scripts
-├── supabase_schema.sql            # Supabase SQL Database Migration Script
+├── App.tsx                          # Root shell: providers, theme, route switch
+├── app.json                         # Expo application manifest
+├── eas.json                         # EAS build profiles (development, preview, production)
+├── package.json                     # Dependencies & build scripts
+├── supabase_schema.sql              # Supabase SQL database migration script
 ├── src/
-│   ├── components/
-│   │   ├── GlobalSearchModal.tsx  # Multi-Entity Search Overlay
-│   │   ├── NotificationCenterModal.tsx # In-App Activity Notification Center
-│   │   └── UIComponents.tsx       # Reusable Design System Primitives
+│   ├── components/                  # Presentational components, shared across features
+│   │   ├── ui/                      # Design-system primitives (Button, Avatar, Pill, Input…)
+│   │   ├── feedback/                # Toast, skeletons, empty states, ErrorBoundary
+│   │   ├── media/                   # AppImage, ParticipantVideo
+│   │   └── overlays/                # Global search, notification centre, report sheet
+│   ├── navigation/                  # Route stack hook, tab bar, app shell, transitions
+│   ├── screens/                     # One folder per feature, one file per screen
+│   │   ├── auth/                    # Splash, onboarding, welcome, sign-up, sign-in
+│   │   ├── home/                    # Dashboard, 7-day streak & daily goals
+│   │   ├── chat/                    # Thread list & realtime private chat
+│   │   ├── communities/             # Community list, detail, creation
+│   │   ├── sessions/                # Sessions list, scheduling, live lobby, meetups
+│   │   │   └── components/          # Lobby-only pieces (control bar, roster, chat drawer)
+│   │   ├── profile/                 # Profile, editing, password, notification prefs
+│   │   ├── moderation/              # Report queue & community member management
+│   │   ├── leaderboard/             # Points leaderboard
+│   │   ├── recordings/              # Recorded lecture browser & player
+│   │   └── filters/                 # Tutor discovery filters
 │   ├── context/
-│   │   └── AppStoreContext.tsx    # React Context Store & Custom Hooks
+│   │   └── AppStoreContext.tsx      # React context store & hooks
 │   ├── data/
-│   │   └── mockData.ts            # Mock Data Contracts & Types
-│   ├── lib/
-│   │   ├── notifications.ts       # Expo Push Notification Helper
-│   │   └── supabase.ts            # Supabase Auth, Database & WebSocket Realtime Service
-│   ├── screens/
-│   │   ├── AuthScreens.tsx        # Splash, Onboarding, Welcome, Sign Up, Sign In
-│   │   ├── ChatScreens.tsx        # Chat Thread List & Realtime Message View
-│   │   ├── CommunitiesScreens.tsx # Communities Feed, Detail & Study Resource Drawer
-│   │   ├── HomeScreen.tsx         # Dashboard, 7-Day Streak & Daily Goals Tracker
-│   │   ├── ProfileScreens.tsx     # Profile, Dark Mode, Tutor Reviews & Endorsements
-│   │   ├── SecondaryScreens.tsx   # Leaderboard, Perk Store & Recorded Lecture Player
-│   │   └── SessionsScreens.tsx    # Sessions List, Live Lobby & Campus Meetup Map Pins
-│   └── styles/
-│       └── appStyles.ts           # Central CSS Design System & Theme Styles
+│   │   └── mockData.ts              # Data contracts, types & seed data
+│   ├── lib/                         # Non-visual services
+│   │   ├── supabase/                # Backend calls, split by domain (auth, chat, posts…)
+│   │   ├── video/                   # LiveKit / local-preview video providers
+│   │   ├── notifications.ts         # Expo push notification helper
+│   │   ├── uploads.ts               # Storage uploads & signed URLs
+│   │   ├── storage.ts               # AsyncStorage persistence
+│   │   ├── recommendations.ts       # Session recommendation ranking
+│   │   ├── session.ts               # Launch route resolution
+│   │   └── haptics.ts               # Haptic feedback helpers
+│   ├── styles/
+│   │   ├── tokens.ts                # Design tokens: type, spacing, radii, shadows
+│   │   ├── theme.ts                 # Theme colours (light / dark / midnight)
+│   │   ├── appStyles.ts             # Composes the sheets into the themed stylesheet
+│   │   └── sheets/                  # Style rules, split by the feature that uses them
+│   └── __tests__/                   # Jest unit & component tests
 ```
 
 ---

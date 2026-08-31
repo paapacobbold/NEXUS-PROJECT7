@@ -1,4 +1,4 @@
-import { resolveAuthenticated, resolveEntryRoute } from '../lib/session';
+import { resolveAuthenticated, resolveEntryRoute } from '@/lib/session';
 
 describe('resolveEntryRoute', () => {
   it('sends a signed-in user straight to Home', () => {

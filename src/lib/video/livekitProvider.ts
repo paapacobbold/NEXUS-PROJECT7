@@ -7,7 +7,7 @@ import {
   RoomEvent,
   Track,
 } from 'livekit-client';
-import { getSupabaseClient } from '../supabase';
+import { getSupabaseClient } from '@/lib/supabase';
 import {
   JoinRoomOptions,
   VideoConnectionStatus,

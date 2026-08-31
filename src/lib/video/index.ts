@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { recordSessionAttendance } from '../supabase';
+import { recordSessionAttendance } from '@/lib/supabase';
 import { LocalPreviewProvider } from './localPreviewProvider';
 import { JoinRoomOptions, VideoProvider, VideoRoomState } from './types';
 

@@ -90,3 +90,11 @@ export const shadowSm = makeShadow(0.06, 8, 2, 2);
 export const shadowMd = makeShadow(0.1, 16, 6, 6);
 /** Overlays — toasts, modals. */
 export const shadowLg = makeShadow(0.16, 28, 12, 12);
+
+/* -------------------------------- Touch ---------------------------------- */
+
+/**
+ * Expands the touch target of small icon buttons to meet the 44pt minimum
+ * without inflating their visual size.
+ */
+export const HIT_SLOP = { top: 8, bottom: 8, left: 8, right: 8 } as const;

@@ -8,18 +8,19 @@ import {
 } from '@expo-google-fonts/inter';
 import * as ExpoSplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Animated, useColorScheme, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useColorScheme, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { MainShell } from './src/components/UIComponents';
-import { AppRoute, AppStore, AppStoreContext, FilterKey, FilterState, TabKey, ThemeMode } from './src/context/AppStoreContext';
+import { MainShell } from '@/navigation';
+import { ScreenTransitionContainer } from '@/navigation/ScreenTransitionContainer';
+import { useNavigationStack } from '@/navigation/useNavigationStack';
+import { AppRoute, AppStore, AppStoreContext, FilterState, ThemeMode } from '@/context/AppStoreContext';
 import {
   communities as initialCommunities,
   currentUser,
   DEFAULT_AVATAR,
   defaultNotificationPrefs,
-  filterSections,
   sampleMeetups,
   threadMessages,
   threadPreviews,
@@ -27,22 +28,22 @@ import {
   CommunityItem,
   InPersonMeetup,
   SessionItem,
-} from './src/data/mockData';
-import { CommunitiesScreen, CommunityDetailScreen, CreateCommunityScreen } from './src/screens/CommunitiesScreens';
-import { HomeScreen } from './src/screens/HomeScreen';
-import { ProfileScreen, EditProfileScreen, ChangePasswordScreen, NotificationPreferencesScreen } from './src/screens/ProfileScreens';
-import { ChatListScreen, PrivateChatScreen } from './src/screens/ChatScreens';
-import { SessionsScreen, ScheduleSessionScreen, SessionLobbyScreen, CreateMeetupScreen } from './src/screens/SessionsScreens';
-import { LeaderboardScreen, RecordingsScreen, FiltersScreen } from './src/screens/SecondaryScreens';
-import { CommunityMembersScreen, ModerationScreen } from './src/screens/ModerationScreens';
-import { OnboardingScreen, SignupScreen, SigninScreen, SplashScreen, WelcomeScreen } from './src/screens/AuthScreens';
-import { applyThemeStyles, getThemeColors, nowTime, styles } from './src/styles/appStyles';
+} from '@/data/mockData';
+import { CommunitiesScreen, CommunityDetailScreen, CreateCommunityScreen } from '@/screens/communities';
+import { HomeScreen } from '@/screens/home';
+import { ProfileScreen, EditProfileScreen, ChangePasswordScreen, NotificationPreferencesScreen } from '@/screens/profile';
+import { ChatListScreen, PrivateChatScreen } from '@/screens/chat';
+import { SessionsScreen, ScheduleSessionScreen, SessionLobbyScreen, CreateMeetupScreen } from '@/screens/sessions';
+import { FiltersScreen } from '@/screens/filters';
+import { LeaderboardScreen } from '@/screens/leaderboard';
+import { RecordingsScreen } from '@/screens/recordings';
+import { CommunityMembersScreen, ModerationScreen } from '@/screens/moderation';
+import { OnboardingScreen, SignupScreen, SigninScreen, SplashScreen, WelcomeScreen } from '@/screens/auth';
+import { applyThemeStyles, getThemeColors, nowTime, styles } from '@/styles/appStyles';
 
-import { resolveAuthenticated, resolveEntryRoute } from './src/lib/session';
-import { GlobalSearchModal } from './src/components/GlobalSearchModal';
-import { NotificationCenterModal } from './src/components/NotificationCenterModal';
-import { ErrorBoundary } from './src/components/ErrorBoundary';
-import { ToastProvider } from './src/components/Toast';
+import { resolveAuthenticated, resolveEntryRoute } from '@/lib/session';
+import { GlobalSearchModal, NotificationCenterModal } from '@/components/overlays';
+import { ErrorBoundary, ToastProvider } from '@/components/feedback';
 import {
   clearSessionStorage,
   loadAuthState,
@@ -59,40 +60,11 @@ import {
   saveNotificationPrefsStorage,
   saveProfileStorage,
   saveThemeStorage,
-} from './src/lib/storage';
+} from '@/lib/storage';
 
 ExpoSplashScreen.preventAutoHideAsync().catch(() => {
   /* already hidden, or unavailable in this runtime */
 });
-
-function ScreenTransitionContainer({ routeKey, children }: { routeKey: string; children: React.ReactNode }) {
-  const fadeAnim = React.useRef(new Animated.Value(0.3)).current;
-  const translateY = React.useRef(new Animated.Value(14)).current;
-
-  React.useEffect(() => {
-    fadeAnim.setValue(0.3);
-    translateY.setValue(14);
-
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 220,
-        useNativeDriver: true,
-      }),
-      Animated.timing(translateY, {
-        toValue: 0,
-        duration: 220,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [routeKey]);
-
-  return (
-    <Animated.View style={{ flex: 1, opacity: fadeAnim, transform: [{ translateY }] }}>
-      {children}
-    </Animated.View>
-  );
-}
 
 // No filters selected by default. These used to be pre-populated, which was
 // harmless while the filters were inert — now that subject actually filters the
@@ -122,7 +94,8 @@ export default function App() {
       ExpoSplashScreen.hideAsync().catch(() => {});
     }
   }, [fontsLoaded]);
-  const [stack, setStack] = useState<AppRoute[]>(['splash']);
+  const { currentRoute, push, replace, goBack, reset, openTab } =
+    useNavigationStack('splash');
   const [theme, setTheme] = useState<ThemeMode>('system');
   const [showGlobalSearch, setShowGlobalSearch] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -146,7 +119,6 @@ export default function App() {
   // Rebuild the shared stylesheet for this theme before any child renders.
   useMemo(() => applyThemeStyles(themeColors), [themeColors]);
 
-  const currentRoute = stack[stack.length - 1];
   const currentThreadId = activeThreadId || (threads[0]?.id ?? 'default');
   const featuredCommunity = communitiesList[0] || initialCommunities[0];
 
@@ -181,7 +153,7 @@ export default function App() {
 
   const signOut = useCallback(async () => {
     try {
-      const { signOutUser } = await import('./src/lib/supabase');
+      const { signOutUser } = await import('@/lib/supabase');
       await signOutUser();
     } catch (err) {
       console.warn('Sign out error:', err);
@@ -204,7 +176,7 @@ export default function App() {
       let hasSupabaseSession = false;
 
       try {
-        const supabaseLib = await import('./src/lib/supabase');
+        const supabaseLib = await import('@/lib/supabase');
         hasSupabaseEnv = supabaseLib.hasSupabaseEnv;
         if (hasSupabaseEnv) {
           // getSession() normally reads the AsyncStorage-persisted session, but
@@ -241,7 +213,7 @@ export default function App() {
   // Shared by the initial mount fetch and pull-to-refresh.
   const refreshCollections = useCallback(async () => {
     try {
-      const { getCommunities, getSessions, getMeetups } = await import('./src/lib/supabase');
+      const { getCommunities, getSessions, getMeetups } = await import('@/lib/supabase');
 
       const liveCommunities = await getCommunities();
       if (liveCommunities && liveCommunities.length > 0) {
@@ -296,7 +268,7 @@ export default function App() {
           getUserMeetupRSVPs,
           getCurrentSession,
           fetchUserProfile,
-        } = await import('./src/lib/supabase');
+        } = await import('@/lib/supabase');
 
         if (!supabase) return;
 
@@ -373,10 +345,10 @@ export default function App() {
   // Navigate underneath the splash as soon as the launch route is known, so
   // the screen is fully mounted and painted before the overlay dissolves.
   useEffect(() => {
-    if (entryRoute && stack[stack.length - 1] === 'splash') {
-      setStack([entryRoute]);
+    if (entryRoute && currentRoute === 'splash') {
+      reset(entryRoute);
     }
-  }, [stack, entryRoute]);
+  }, [currentRoute, entryRoute, reset]);
 
   const refreshAll = useCallback(async () => {
     setIsRefreshing(true);
@@ -386,13 +358,6 @@ export default function App() {
       setIsRefreshing(false);
     }
   }, [refreshCollections]);
-
-  const push = (route: AppRoute) => setStack((prev) => [...prev, route]);
-  const replace = (route: AppRoute) =>
-    setStack((prev) => [...prev.slice(0, Math.max(prev.length - 1, 0)), route]);
-  const goBack = () =>
-    setStack((prev) => (prev.length > 1 ? prev.slice(0, prev.length - 1) : prev));
-  const openTab = (tab: TabKey) => replace(`main-${tab}` as AppRoute);
 
   const handleSetTheme = (newTheme: ThemeMode) => {
     setTheme(newTheme);
@@ -408,7 +373,7 @@ export default function App() {
         setProfile((prev) => {
           const updated = { ...prev, ...patch };
           saveProfileStorage(updated);
-          import('./src/lib/supabase').then(({ getCurrentSession, updateUserProfile }) => {
+          import('@/lib/supabase').then(({ getCurrentSession, updateUserProfile }) => {
             getCurrentSession().then((session) => {
               if (session?.user) {
                 updateUserProfile(session.user.id, {
@@ -478,7 +443,7 @@ export default function App() {
           prev.map((item) => {
             if (item.id === communityId) {
               const nextJoined = !item.joined;
-              import('./src/lib/supabase')
+              import('@/lib/supabase')
                 .then(({ getCurrentSession, joinCommunity, leaveCommunity }) => {
                   getCurrentSession()
                     .then((session) => {
@@ -517,7 +482,7 @@ export default function App() {
           postsFeed: [],
         };
         setCommunitiesList((prev) => [newCommunity, ...prev]);
-        import('./src/lib/supabase')
+        import('@/lib/supabase')
           .then(({ getCurrentSession, createCommunityInSupabase }) => {
             getCurrentSession()
               .then((session) => {
@@ -539,7 +504,7 @@ export default function App() {
           image: profile.avatar,
         };
         setSessionsList((prev) => [newSession, ...prev]);
-        import('./src/lib/supabase')
+        import('@/lib/supabase')
           .then(({ getCurrentSession, createSession }) => {
             getCurrentSession()
               .then((session) => {
@@ -573,7 +538,7 @@ export default function App() {
           prev.map((m) => {
             if (m.id === meetupId) {
               const nextRSVP = !m.rsvpStatus;
-              import('./src/lib/supabase')
+              import('@/lib/supabase')
                 .then(({ getCurrentSession, rsvpMeetupInSupabase }) => {
                   getCurrentSession()
                     .then((session) => {
@@ -605,7 +570,7 @@ export default function App() {
           rsvpStatus: true,
         };
         setMeetupsList((prev) => [newMeetup, ...prev]);
-        import('./src/lib/supabase')
+        import('@/lib/supabase')
           .then(({ getCurrentSession, createMeetupInSupabase }) => {
             getCurrentSession()
               .then((session) => {
@@ -669,7 +634,7 @@ export default function App() {
             onBack={goBack}
             onContinue={() => {
               markAuthenticated();
-              setStack(['main-home']);
+              reset('main-home');
             }}
             onSignInClick={() => replace('signin')}
           />
@@ -680,7 +645,7 @@ export default function App() {
             onBack={goBack}
             onContinue={() => {
               markAuthenticated();
-              setStack(['main-home']);
+              reset('main-home');
             }}
             onSignUpClick={() => replace('signup')}
           />
@@ -759,7 +724,7 @@ export default function App() {
               onSignOut={async () => {
                 await signOut();
                 // Reset the stack so Back cannot re-enter the signed-in app.
-                setStack(['welcome']);
+                reset('welcome');
               }}
             />
           </MainShell>

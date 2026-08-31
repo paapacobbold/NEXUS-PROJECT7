@@ -1,4 +1,4 @@
-import { AppRoute } from '../context/AppStoreContext';
+import { AppRoute } from '@/context/AppStoreContext';
 import { PersistedAuthState } from './storage';
 
 /**

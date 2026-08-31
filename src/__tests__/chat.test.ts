@@ -7,7 +7,7 @@ import {
   subscribeToThreadMessages,
   createChatThread,
   getUserThreads,
-} from '../lib/supabase';
+} from '@/lib/supabase';
 
 jest.mock('@supabase/supabase-js', () => ({
   createClient: jest.fn(() => ({

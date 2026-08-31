@@ -1,4 +1,4 @@
-import React, { createContext, useContext } from 'react';
+import { createContext, useContext } from 'react';
 import {
   CommunityItem,
   InPersonMeetup,
@@ -7,7 +7,7 @@ import {
   ThreadPreview,
   UserProfile,
   filterSections,
-} from '../data/mockData';
+} from '@/data/mockData';
 
 export type AppRoute =
   | 'splash'
