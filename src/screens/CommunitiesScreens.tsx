@@ -32,13 +32,17 @@ import {
   getCommunityPosts,
   subscribeToCommunityPosts,
 } from '../lib/supabase';
+import { StatusBar } from 'expo-status-bar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ReportSheet } from '../components/ReportSheet';
+import { recommendCommunities } from '../lib/recommendations';
 import { uploadFile } from '../lib/uploads';
 import { EmptyState, SkeletonList, useRefreshControl } from '../components/States';
 import { useToast } from '../components/Toast';
 import { tapMedium } from '../lib/haptics';
 import { useAppStore } from '../context/AppStoreContext';
 import { brand, CommunityItem, DEFAULT_AVATAR } from '../data/mockData';
-import { styles } from '../styles/appStyles';
+import { styles, useThemeColors } from '../styles/appStyles';
 
 const defaultHitSlop = { top: 8, bottom: 8, left: 8, right: 8 };
 
@@ -47,11 +51,12 @@ export function CommunitiesScreen({
   onOpenCommunity,
   onCreateCommunity,
 }: {
-  onOpenDetail?: () => void;
-  onOpenCommunity?: () => void;
+  onOpenDetail?: (communityId?: string) => void;
+  onOpenCommunity?: (communityId?: string) => void;
   onCreateCommunity: () => void;
 }) {
-  const { communitiesList, toggleJoinCommunity, isLoadingData } = useAppStore();
+  const colors = useThemeColors();
+  const { communitiesList, toggleJoinCommunity, isLoadingData, profile } = useAppStore();
   const refreshControl = useRefreshControl();
   const toast = useToast();
 
@@ -61,9 +66,18 @@ export function CommunitiesScreen({
     toast.show(joined ? `Left ${name}` : `Joined ${name}`, joined ? 'info' : 'success');
   };
   const [activeFilter, setActiveFilter] = useState<'all' | 'joined' | 'stem' | 'humanities'>('all');
-  const handleOpen = onOpenDetail || onOpenCommunity || (() => {});
+  // Takes the id explicitly: every detail screen used to open the first
+  // community in the list regardless of which card was tapped.
+  const handleOpen = (communityId?: string) => {
+    (onOpenDetail || onOpenCommunity)?.(communityId);
+  };
 
   const joinedCount = communitiesList.filter((c) => c.joined).length;
+
+  // Was a fixed card reading "Based on active university learning groups" with
+  // no matching behind it. Now a tag overlap against the profile, as the PRD
+  // specifies for v1 — deliberately not a learned model on sparse data.
+  const recommendations = recommendCommunities(profile, communitiesList, 2);
 
   const filteredCommunities = communitiesList.filter((item) => {
     if (activeFilter === 'joined') return item.joined;
@@ -132,15 +146,24 @@ export function CommunitiesScreen({
               />
             </View>
 
-            <View style={styles.recommendedCard}>
-              <View style={styles.recommendedIcon}>
-                <Ionicons name="sparkles" size={16} color={brand.primary} />
-              </View>
-              <View style={styles.flexFill}>
-                <Text style={styles.recommendedTitle}>Recommended for you</Text>
-                <Text style={styles.mutedCopySmall}>Based on active university learning groups</Text>
-              </View>
-            </View>
+            {recommendations.map(({ community, reason }) => (
+              <Pressable
+                key={community.id}
+                onPress={() => handleOpen(community.id)}
+                accessibilityRole="button"
+                accessibilityLabel={`Recommended: ${community.name}. ${reason}`}
+                style={({ pressed }) => [styles.recommendedCard, pressed && { opacity: 0.85 }]}
+              >
+                <View style={styles.recommendedIcon}>
+                  <Ionicons name="sparkles" size={16} color={brand.primary} />
+                </View>
+                <View style={styles.flexFill}>
+                  <Text style={styles.recommendedTitle}>{community.name}</Text>
+                  <Text style={styles.mutedCopySmall}>{reason}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+              </Pressable>
+            ))}
           </View>
         }
         ListEmptyComponent={
@@ -160,7 +183,7 @@ export function CommunitiesScreen({
           <View style={styles.largeCommunityCard}>
             <Pressable
               hitSlop={defaultHitSlop}
-              onPress={handleOpen}
+              onPress={() => handleOpen(item.id)}
               style={({ pressed }) => [pressed && { opacity: 0.82, transform: [{ scale: 0.98 }] }]}
               accessible={true}
               accessibilityRole="button"
@@ -176,27 +199,21 @@ export function CommunitiesScreen({
                     {item.members} members · {item.posts} posts this week
                   </Text>
                 </View>
+                {!item.joined && (
                 <Pressable
                   hitSlop={defaultHitSlop}
-                  onPress={() => handleToggleJoin(item.id, item.name, Boolean(item.joined))}
+                  onPress={() => handleToggleJoin(item.id, item.name, false)}
                   style={({ pressed }) => [
                     styles.primarySmallButton,
-                    item.joined ? styles.ghostSmallButton : undefined,
                     pressed && { opacity: 0.75, transform: [{ scale: 0.95 }] },
                   ]}
                   accessible={true}
                   accessibilityRole="button"
-                  accessibilityLabel={item.joined ? `Leave ${item.name}` : `Join ${item.name}`}
+                  accessibilityLabel={`Join ${item.name}`}
                 >
-                  <Text
-                    style={[
-                      styles.primarySmallText,
-                      item.joined ? styles.ghostSmallText : undefined,
-                    ]}
-                  >
-                    {item.joined ? 'Joined' : 'Join'}
-                  </Text>
+                  <Text style={styles.primarySmallText}>Join</Text>
                 </Pressable>
+                )}
               </View>
               <Text style={styles.mutedCopySmall}>{item.description}</Text>
             </View>
@@ -213,7 +230,9 @@ export function CommunityDetailScreen({
   onJoin,
   onOpenChat,
   onScheduleSession,
+  onOpenMembers,
 }: {
+  onOpenMembers?: () => void;
   community: CommunityItem;
   onBack: () => void;
   onJoin?: () => void;
@@ -228,6 +247,8 @@ export function CommunityDetailScreen({
   >([]);
 
   const toast = useToast();
+  const colors = useThemeColors();
+  const insets = useSafeAreaInsets();
   const [postTitle, setPostTitle] = useState('');
   const [postBody, setPostBody] = useState('');
   const [postsFeedList, setPostsFeedList] = useState(
@@ -238,6 +259,7 @@ export function CommunityDetailScreen({
   );
   const [postsLoading, setPostsLoading] = useState(true);
   const [uploadingResource, setUploadingResource] = useState(false);
+  const [reportTarget, setReportTarget] = useState<{ id: string; label: string } | null>(null);
   const [postSubmitting, setPostSubmitting] = useState(false);
 
   // Posts used to live only in this component's state, so every discussion was
@@ -384,70 +406,101 @@ export function CommunityDetailScreen({
   };
 
   return (
-    <SafeAreaView style={styles.lightScreen}>
+    <View style={[styles.flexFill, { backgroundColor: colors.bg }]}>
+      <StatusBar style="light" />
       <View style={styles.flexFill}>
-        <ScrollView contentContainerStyle={styles.screenContent}>
-          <ImageBackground source={{ uri: community.image }} style={styles.communityHero}>
-            <LinearGradient colors={['rgba(7,9,24,0.2)', 'rgba(7,9,24,0.85)']} style={styles.flexFill}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14 }}>
-                <Pressable hitSlop={defaultHitSlop} onPress={onBack} style={({ pressed }) => [styles.backButton, pressed && { opacity: 0.7 }]}>
-                  <Ionicons name="arrow-back" size={20} color="#fff" />
-                </Pressable>
+        <ScrollView
+          contentContainerStyle={[styles.screenContent, { paddingBottom: insets.bottom + 96 }]}
+          showsVerticalScrollIndicator={false}
+        >
+          <ImageBackground
+            source={{ uri: community.image }}
+            style={[styles.communityHero, styles.communityHeroBleed]}
+          >
+            <LinearGradient
+              colors={['rgba(7,9,24,0.55)', 'rgba(7,9,24,0.15)', 'rgba(7,9,24,0.9)']}
+              locations={[0, 0.4, 1]}
+              style={styles.flexFill}
+            >
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  paddingHorizontal: 20,
+                  paddingTop: insets.top + 10,
+                }}
+              >
                 <Pressable
                   hitSlop={defaultHitSlop}
-                  onPress={onJoin}
-                  style={({ pressed }) => [
-                    styles.primarySmallButton,
-                    community.joined ? styles.ghostSmallButton : undefined,
-                    pressed && { opacity: 0.75, transform: [{ scale: 0.95 }] },
-                  ]}
+                  onPress={onBack}
+                  accessibilityRole="button"
+                  accessibilityLabel="Go back"
+                  style={({ pressed }) => [styles.heroIconButton, pressed && { opacity: 0.7 }]}
                 >
-                  <Text style={[styles.primarySmallText, community.joined ? styles.ghostSmallText : undefined]}>
-                    {community.joined ? 'Joined' : 'Join'}
-                  </Text>
+                  <Ionicons name="arrow-back" size={20} color="#fff" />
                 </Pressable>
+                <Text
+                  style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}
+                  numberOfLines={1}
+                >
+                  {community.name}
+                </Text>
               </View>
-              <Text style={styles.communityHeroTitle}>{community.name}</Text>
-              <Text style={styles.communityHeroMeta}>
-                {community.members} members · {community.posts} posts
-              </Text>
+              <View style={styles.communityHeroBody}>
+                <Text style={styles.communityHeroTitle}>{community.name}</Text>
+                <Text style={styles.communityHeroMeta}>
+                  {community.subject} · {community.members} members · {community.posts} posts
+                </Text>
+              </View>
             </LinearGradient>
           </ImageBackground>
 
           <View style={styles.communityTabRow}>
             <Text style={[styles.communityTabText, styles.communityTabTextActive]}>Posts</Text>
-            <Pressable hitSlop={defaultHitSlop} onPress={() => setShowResources(true)}>
-              <Text style={styles.communityTabText}>Resources ({studyResources.length} PDFs)</Text>
+            <Pressable
+              hitSlop={defaultHitSlop}
+              onPress={() => setShowResources(true)}
+              accessibilityRole="button"
+              accessibilityLabel={`Resources, ${studyResources.length} files`}
+            >
+              <Text style={styles.communityTabText}>Resources ({studyResources.length})</Text>
             </Pressable>
-            <Text style={styles.communityTabText}>Members</Text>
+            <Pressable
+              hitSlop={defaultHitSlop}
+              onPress={() => onOpenMembers?.()}
+              disabled={!onOpenMembers}
+              accessibilityRole="button"
+              accessibilityLabel="View members"
+            >
+              <Text style={styles.communityTabText}>Members</Text>
+            </Pressable>
           </View>
 
           {/* Create New Community Post Box */}
           {!community.joined ? (
-            <View style={{ backgroundColor: '#FFFFFF', padding: 14, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 12 }}>
-              <Text style={{ fontSize: 13, color: brand.muted }}>
+            <View style={styles.communityPanel}>
+              <Text style={styles.communityPanelHint}>
                 Join this community to start a discussion or ask a question.
               </Text>
             </View>
           ) : (
-          <View style={{ backgroundColor: '#FFFFFF', padding: 14, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 12 }}>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: brand.text, marginBottom: 8 }}>
-              + Start a Discussion / Ask Question (+30 XP)
-            </Text>
+          <View style={styles.communityPanel}>
+            <Text style={styles.communityPanelTitle}>Start a discussion (+30 XP)</Text>
             <TextInput
               value={postTitle}
               onChangeText={setPostTitle}
               placeholder="Question or topic title..."
-              placeholderTextColor={brand.muted}
-              style={{ backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, color: brand.text, marginBottom: 8 }}
+              placeholderTextColor={colors.muted}
+              style={{ backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, color: colors.text, marginBottom: 8 }}
             />
             <TextInput
               value={postBody}
               onChangeText={setPostBody}
               placeholder="Share details, problem sets, or study notes..."
-              placeholderTextColor={brand.muted}
+              placeholderTextColor={colors.muted}
               multiline
-              style={{ backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, color: brand.text, height: 60, textAlignVertical: 'top', marginBottom: 10 }}
+              style={{ backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, color: colors.text, height: 60, textAlignVertical: 'top', marginBottom: 10 }}
             />
             <Pressable
               hitSlop={defaultHitSlop}
@@ -472,12 +525,12 @@ export function CommunityDetailScreen({
           {postsLoading ? (
             <SkeletonList count={2} lines={3} />
           ) : postsFeedList.length === 0 ? (
-            <View style={{ backgroundColor: '#FFFFFF', padding: 24, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', alignItems: 'center', marginTop: 12 }}>
-              <Ionicons name="chatbubbles-outline" size={36} color={brand.muted} />
-              <Text style={{ fontSize: 15, fontWeight: '700', color: brand.text, marginTop: 8, textAlign: 'center' }}>
+            <View style={{ backgroundColor: colors.card, padding: 24, borderRadius: 16, borderWidth: 1, borderColor: colors.border, alignItems: 'center', marginTop: 12 }}>
+              <Ionicons name="chatbubbles-outline" size={36} color={colors.muted} />
+              <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginTop: 8, textAlign: 'center' }}>
                 No Community Posts Yet
               </Text>
-              <Text style={{ fontSize: 13, color: brand.muted, marginTop: 4, textAlign: 'center' }}>
+              <Text style={{ fontSize: 13, color: colors.muted, marginTop: 4, textAlign: 'center' }}>
                 Be the first to start a topic or ask a question using the form above!
               </Text>
             </View>
@@ -493,6 +546,15 @@ export function CommunityDetailScreen({
                     </View>
                     <Text style={styles.threadTime}>{post.time}</Text>
                   </View>
+                  <Pressable
+                    hitSlop={defaultHitSlop}
+                    onPress={() => setReportTarget({ id: post.id, label: post.title || post.body })}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Report post by ${post.author}`}
+                    style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+                  >
+                    <Ionicons name="ellipsis-horizontal" size={18} color={colors.muted} />
+                  </Pressable>
                 </View>
                 <Text style={styles.postTitle}>{post.title}</Text>
                 <Text style={styles.postBody}>{post.body}</Text>
@@ -502,9 +564,11 @@ export function CommunityDetailScreen({
           )}
         </ScrollView>
 
-        <View style={styles.stickyBottomActions}>
+        <View style={[styles.stickyBottomActions, { paddingBottom: insets.bottom + 14 }]}>
           {onOpenChat ? <PrimarySmallButton label="Open Chat" onPress={onOpenChat} /> : null}
-          {onScheduleSession ? <GhostSmallButton label="Schedule Session" onPress={onScheduleSession} /> : null}
+          {onScheduleSession ? (
+            <GhostSmallButton label="Schedule Session" onPress={onScheduleSession} />
+          ) : null}
         </View>
       </View>
 
@@ -518,7 +582,7 @@ export function CommunityDetailScreen({
                 <Text style={styles.mutedCopySmall}>Course formula sheets, slides & solved exams</Text>
               </View>
               <Pressable hitSlop={defaultHitSlop} onPress={() => setShowResources(false)}>
-                <Ionicons name="close-circle" size={26} color={brand.muted} />
+                <Ionicons name="close-circle" size={26} color={colors.muted} />
               </Pressable>
             </View>
 
@@ -585,7 +649,14 @@ export function CommunityDetailScreen({
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+      <ReportSheet
+        visible={Boolean(reportTarget)}
+        onClose={() => setReportTarget(null)}
+        targetType="post"
+        targetId={reportTarget?.id ?? ''}
+        targetLabel={reportTarget?.label}
+      />
+    </View>
   );
 }
 

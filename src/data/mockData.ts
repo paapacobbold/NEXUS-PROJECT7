@@ -54,6 +54,10 @@ export type MessageItem = {
   sender: 'me' | 'them';
   text: string;
   time: string;
+  /** Storage object path in the resources bucket, signed at read time. */
+  attachmentPath?: string;
+  attachmentName?: string;
+  attachmentType?: string;
 };
 
 export type SkillLevel = 'Beginner' | 'Intermediate' | 'Advanced';

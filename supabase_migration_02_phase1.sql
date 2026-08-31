@@ -311,7 +311,7 @@ CREATE OR REPLACE FUNCTION public.award_points(p_reason TEXT, p_ref UUID DEFAULT
 RETURNS INTEGER
 LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = public
-AS $
+AS $$
 DECLARE
     v_points INTEGER;
 BEGIN
@@ -338,7 +338,7 @@ BEGIN
 
     RETURN v_points;
 END;
-$;
+$$;
 
 GRANT EXECUTE ON FUNCTION public.award_points(TEXT, UUID) TO authenticated;
 
@@ -437,7 +437,7 @@ CREATE POLICY "Organizers or admins delete meetups" ON public.meetups
 
 -- ALTER PUBLICATION ... ADD TABLE errors if the table is already a member, so
 -- guard it to keep this file genuinely re-runnable.
-DO $
+DO $$
 BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM pg_publication_tables
@@ -452,4 +452,4 @@ BEGIN
     ) THEN
         ALTER PUBLICATION supabase_realtime ADD TABLE public.post_comments;
     END IF;
-END $;
+END $$;

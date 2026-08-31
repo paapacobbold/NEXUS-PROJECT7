@@ -407,19 +407,30 @@ export function CircleIconButton({
   onPress,
   filled,
   light,
+  label,
+  disabled = false,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   onPress: () => void;
   filled?: boolean;
   light?: boolean;
+  /** Screen-reader name; falls back to a readable form of the icon name. */
+  label?: string;
+  disabled?: boolean;
 }) {
   const colors = useThemeColors();
+  const accessibleName = label ?? icon.replace(/-(outline|sharp)$/, '').replace(/-/g, ' ');
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       hitSlop={defaultHitSlop}
+      accessibilityRole="button"
+      accessibilityLabel={accessibleName}
+      accessibilityState={{ disabled }}
       style={({ pressed }) => [
         styles.circleIconButton,
+        disabled && { opacity: 0.55 },
         { backgroundColor: colors.inputBg },
         filled ? styles.circleIconFilled : undefined,
         light ? styles.circleIconLight : undefined,

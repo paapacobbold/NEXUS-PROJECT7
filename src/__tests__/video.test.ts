@@ -87,3 +87,36 @@ describe('VideoProvider contract — LocalPreviewProvider', () => {
     expect(seen).toHaveLength(countAfterUnsubscribe);
   });
 });
+
+describe('provider resolution', () => {
+  afterEach(() => {
+    jest.resetModules();
+  });
+
+  it('falls back to camera preview when LiveKit is unavailable', () => {
+    // Jest has no native WebRTC module, which is the same situation as Expo Go.
+    // getVideoProvider() must resolve rather than throw, or the session screen
+    // would take the whole app down on launch.
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const { getVideoProvider, resetVideoProvider } = require('../lib/video');
+
+    resetVideoProvider();
+    const provider = getVideoProvider();
+
+    expect(provider).toBeTruthy();
+    expect(typeof provider.join).toBe('function');
+    expect(provider.supportsRemoteMedia).toBe(false);
+
+    warn.mockRestore();
+  });
+
+  it('resolves the provider only once', () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const { getVideoProvider, resetVideoProvider } = require('../lib/video');
+
+    resetVideoProvider();
+    expect(getVideoProvider()).toBe(getVideoProvider());
+
+    warn.mockRestore();
+  });
+});

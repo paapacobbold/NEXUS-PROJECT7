@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import { DEFAULT_AVATAR } from '../data/mockData';
-import { VideoParticipant } from '../lib/video';
+import type { VideoParticipant } from '../lib/video';
 import { Avatar } from './UIComponents';
 
 /**

@@ -31,7 +31,9 @@ export type AppRoute =
   | 'session-lobby'
   | 'edit-profile'
   | 'change-password'
-  | 'notification-preferences';
+  | 'notification-preferences'
+  | 'moderation'
+  | 'community-members';
 
 export type TabKey = 'home' | 'communities' | 'sessions' | 'chat' | 'profile';
 export type FilterKey = keyof typeof filterSections;

@@ -18,7 +18,12 @@ import {
   IconButton,
   SearchInput,
 } from '../components/UIComponents';
+import * as DocumentPicker from 'expo-document-picker';
+import { Linking } from 'react-native';
 import { EmptyState, useRefreshControl } from '../components/States';
+import { useToast } from '../components/Toast';
+import { tapMedium } from '../lib/haptics';
+import { uploadFile, urlFor } from '../lib/uploads';
 import { useAppStore } from '../context/AppStoreContext';
 import { brand, MessageItem, ThreadPreview, UserProfile } from '../data/mockData';
 import {
@@ -29,7 +34,7 @@ import {
   sendSupabaseMessage,
   subscribeToThreadMessages,
 } from '../lib/supabase';
-import { styles } from '../styles/appStyles';
+import { styles, useThemeColors } from '../styles/appStyles';
 
 const hitSlop = { top: 8, bottom: 8, left: 8, right: 8 };
 
@@ -40,6 +45,7 @@ export function ChatListScreen({
   onOpenThread: (threadId?: string) => void;
   onSelectThread?: (threadId: string) => void;
 }) {
+  const colors = useThemeColors();
   const { threads, profile } = useAppStore();
   const refreshControl = useRefreshControl();
   const [liveThreads, setLiveThreads] = useState<ThreadPreview[]>(threads);
@@ -122,10 +128,10 @@ export function ChatListScreen({
           >
             <Ionicons name="chatbubbles-outline" size={32} color={brand.primary} />
           </View>
-          <Text style={{ fontSize: 18, fontWeight: '700', color: brand.text, textAlign: 'center', marginBottom: 8 }}>
+          <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, textAlign: 'center', marginBottom: 8 }}>
             No Conversations Yet
           </Text>
-          <Text style={{ fontSize: 14, color: brand.muted, textAlign: 'center', marginBottom: 20 }}>
+          <Text style={{ fontSize: 14, color: colors.muted, textAlign: 'center', marginBottom: 20 }}>
             Start a live real-time chat with another registered student or tutor!
           </Text>
           <Pressable
@@ -194,7 +200,7 @@ export function ChatListScreen({
 
       {/* New Chat Modal */}
       <Modal visible={showNewChatModal} animationType="slide" transparent={false}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.card }}>
           <View
             style={{
               flexDirection: 'row',
@@ -206,9 +212,9 @@ export function ChatListScreen({
               borderBottomColor: brand.border,
             }}
           >
-            <Text style={{ fontSize: 20, fontWeight: '700', color: brand.text }}>New Live Chat</Text>
+            <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text }}>New Live Chat</Text>
             <Pressable hitSlop={hitSlop} onPress={() => setShowNewChatModal(false)} style={({ pressed }) => [{ padding: 4 }, pressed && { opacity: 0.6 }]}>
-              <Ionicons name="close" size={24} color={brand.text} />
+              <Ionicons name="close" size={24} color={colors.text} />
             </Pressable>
           </View>
 
@@ -223,12 +229,12 @@ export function ChatListScreen({
           {loadingUsers ? (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
               <ActivityIndicator size="large" color={brand.primary} />
-              <Text style={{ marginTop: 12, color: brand.muted }}>Loading registered members...</Text>
+              <Text style={{ marginTop: 12, color: colors.muted }}>Loading registered members...</Text>
             </View>
           ) : filteredUsers.length === 0 ? (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
-              <Ionicons name="people-outline" size={48} color={brand.muted} />
-              <Text style={{ marginTop: 12, fontSize: 16, color: brand.muted, textAlign: 'center' }}>
+              <Ionicons name="people-outline" size={48} color={colors.muted} />
+              <Text style={{ marginTop: 12, fontSize: 16, color: colors.muted, textAlign: 'center' }}>
                 No other registered users found. Sign up a second account to test live messaging!
               </Text>
             </View>
@@ -254,12 +260,12 @@ export function ChatListScreen({
                 >
                   <Avatar source={item.avatar} size={48} />
                   <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={{ fontSize: 16, fontWeight: '600', color: brand.text }}>{item.name}</Text>
-                    <Text style={{ fontSize: 13, color: brand.muted }}>
+                    <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }}>{item.name}</Text>
+                    <Text style={{ fontSize: 13, color: colors.muted }}>
                       {item.major} · {item.university}
                     </Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={20} color={brand.muted} />
+                  <Ionicons name="chevron-forward" size={20} color={colors.muted} />
                 </Pressable>
               )}
             />
@@ -279,6 +285,9 @@ export function PrivateChatScreen({
 }) {
   const { threads, messagesByThread, sendMessage, profile } = useAppStore();
   const [draft, setDraft] = useState('');
+  const [attaching, setAttaching] = useState(false);
+  const colors = useThemeColors();
+  const toast = useToast();
   const [liveMessages, setLiveMessages] = useState<MessageItem[]>(
     messagesByThread[threadId] || []
   );
@@ -328,6 +337,67 @@ export function PrivateChatScreen({
     };
   }, [threadId, profile.id]);
 
+  /**
+   * Attaches a file to the conversation (SRS 3.7 — "file and link sharing").
+   *
+   * The picked file is uploaded first: a local file:// URI would only resolve
+   * on the sender's device, so the recipient would see a dead link.
+   */
+  const handleAttach = async () => {
+    if (attaching) return;
+    try {
+      const picked = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
+      if (picked.canceled || !picked.assets?.length) return;
+
+      const file = picked.assets[0];
+      setAttaching(true);
+
+      const { path } = await uploadFile({
+        bucket: 'resources',
+        userId: profile.id || '',
+        uri: file.uri,
+        fileName: file.name || undefined,
+        contentType: file.mimeType || undefined,
+      });
+
+      const { error } = await sendSupabaseMessage(threadId, '', profile?.id, {
+        path,
+        name: file.name || 'Attachment',
+        mimeType: file.mimeType || undefined,
+      });
+      if (error) throw error;
+
+      setLiveMessages((prev: MessageItem[]) => [
+        ...prev,
+        {
+          id: `att-${Date.now()}`,
+          sender: 'me',
+          text: '',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          attachmentPath: path,
+          attachmentName: file.name || 'Attachment',
+          attachmentType: file.mimeType || undefined,
+        },
+      ]);
+      flatListRef.current?.scrollToEnd({ animated: true });
+      tapMedium();
+    } catch (err: any) {
+      toast.show(err?.message || 'Could not send that file. Try again.', 'error');
+    } finally {
+      setAttaching(false);
+    }
+  };
+
+  /** Attachments live in a private bucket, so open them through a signed URL. */
+  const handleOpenAttachment = async (path: string) => {
+    try {
+      const signed = await urlFor('resources', path);
+      await Linking.openURL(signed);
+    } catch {
+      toast.show('Could not open that attachment.', 'error');
+    }
+  };
+
   const handleSend = async () => {
     if (!draft.trim()) return;
 
@@ -372,7 +442,7 @@ export function PrivateChatScreen({
             accessibilityRole="button"
             accessibilityLabel="Go back"
           >
-            <Ionicons name="arrow-back" size={20} color={brand.text} />
+            <Ionicons name="arrow-back" size={20} color={colors.text} />
           </Pressable>
           <Avatar source={activeThread.avatar} size={38} />
           <View style={styles.flexFill}>
@@ -399,14 +469,40 @@ export function PrivateChatScreen({
               accessible={true}
               accessibilityLabel={`Message: ${message.text} at ${message.time}`}
             >
-              <Text
-                style={[
-                  styles.messageText,
-                  message.sender === 'me' ? styles.messageTextMine : undefined,
-                ]}
-              >
-                {message.text}
-              </Text>
+              {message.attachmentPath ? (
+                <Pressable
+                  onPress={() => handleOpenAttachment(message.attachmentPath!)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${message.attachmentName || 'attachment'}`}
+                  style={({ pressed }) => [styles.attachmentRow, pressed && { opacity: 0.7 }]}
+                >
+                  <Ionicons
+                    name="document-attach"
+                    size={18}
+                    color={message.sender === 'me' ? '#fff' : brand.primary}
+                  />
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.messageText,
+                      styles.attachmentName,
+                      message.sender === 'me' ? styles.messageTextMine : undefined,
+                    ]}
+                  >
+                    {message.attachmentName || 'Attachment'}
+                  </Text>
+                </Pressable>
+              ) : null}
+              {message.text ? (
+                <Text
+                  style={[
+                    styles.messageText,
+                    message.sender === 'me' ? styles.messageTextMine : undefined,
+                  ]}
+                >
+                  {message.text}
+                </Text>
+              ) : null}
               <Text
                 style={[
                   styles.messageTime,
@@ -425,11 +521,17 @@ export function PrivateChatScreen({
             value={draft}
             onChangeText={setDraft}
             placeholder="Type a message..."
-            placeholderTextColor={brand.muted}
+            placeholderTextColor={colors.muted}
             style={styles.composerInput}
             onSubmitEditing={handleSend}
           />
-          <CircleIconButton icon="send" onPress={handleSend} filled />
+          <CircleIconButton
+            icon={attaching ? 'hourglass-outline' : 'attach'}
+            onPress={handleAttach}
+            disabled={attaching}
+            label={attaching ? 'Uploading attachment' : 'Attach a file'}
+          />
+          <CircleIconButton icon="send" onPress={handleSend} filled label="Send message" />
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

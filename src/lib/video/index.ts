@@ -8,30 +8,40 @@ export * from './types';
 /**
  * The active video provider.
  *
- * LiveKit is native code, so it only exists in a development build. Rather than
- * crashing the whole app on launch in Expo Go, fall back to the camera-preview
- * provider — the lobby then labels itself "Camera preview only" and every other
- * screen keeps working. See docs/VIDEO.md.
+ * LiveKit is native code that only exists in a development build. This module
+ * is reachable from App.tsx's import graph, so constructing the provider at
+ * module scope would evaluate LiveKit — and therefore WebRTC's native module —
+ * on every app launch, including in Expo Go where it does not exist.
+ *
+ * Constructing lazily means nothing outside the session lobby ever touches
+ * LiveKit: in Expo Go every other screen runs with no video code loaded at all,
+ * and only opening a session falls back to the camera-preview provider.
+ * See docs/VIDEO.md.
  */
-function createProvider(): VideoProvider {
+let activeProvider: VideoProvider | null = null;
+
+export function getVideoProvider(): VideoProvider {
+  if (activeProvider) return activeProvider;
+
   try {
-    // Required lazily: importing LiveKit pulls in WebRTC's native module.
+    // Inline require so Metro does not hoist this to module-evaluation time.
     const { LiveKitProvider } = require('./livekitProvider');
-    return new LiveKitProvider();
+    activeProvider = new LiveKitProvider() as VideoProvider;
   } catch (err) {
     console.warn(
       '[video] LiveKit is unavailable (development build required). ' +
         'Falling back to camera preview.',
       err
     );
-    return new LocalPreviewProvider();
+    activeProvider = new LocalPreviewProvider();
   }
+
+  return activeProvider;
 }
 
-const activeProvider: VideoProvider = createProvider();
-
-export function getVideoProvider(): VideoProvider {
-  return activeProvider;
+/** Test seam: forces the next getVideoProvider() to re-resolve. */
+export function resetVideoProvider(): void {
+  activeProvider = null;
 }
 
 /**

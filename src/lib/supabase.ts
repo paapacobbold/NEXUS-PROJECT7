@@ -472,6 +472,355 @@ export async function getLeaderboard(limit = 20): Promise<LeaderboardRow[]> {
   }
 }
 
+
+// --- COMMUNITY MEMBER MANAGEMENT (SRS 3.3) ---
+
+export type CommunityMember = {
+  id: string;
+  name: string;
+  avatar: string;
+  role: string;
+  joinedAt: string;
+};
+
+export async function getCommunityMembers(communityId: string): Promise<CommunityMember[]> {
+  const client = getSupabaseClient();
+  if (!client || !communityId) return [];
+  try {
+    const { data, error } = await client
+      .from('community_members')
+      .select('user_id, role, joined_at, profiles(full_name, avatar_url)')
+      .eq('community_id', communityId)
+      .order('joined_at', { ascending: true });
+
+    if (error || !data) return [];
+    return data.map((row: any) => ({
+      id: row.user_id,
+      name: row.profiles?.full_name || 'Member',
+      avatar: row.profiles?.avatar_url || DEFAULT_AVATAR,
+      role: row.role || 'member',
+      joinedAt: row.joined_at,
+    }));
+  } catch (err) {
+    console.warn('Error fetching members:', err);
+    return [];
+  }
+}
+
+/** Owner-only: enforced by the "Owners manage community members" policy. */
+export async function removeCommunityMember(communityId: string, userId: string) {
+  const client = getSupabaseClient();
+  if (!client) return { error: new Error('Supabase not configured') };
+  return client
+    .from('community_members')
+    .delete()
+    .eq('community_id', communityId)
+    .eq('user_id', userId);
+}
+
+export async function setCommunityMemberRole(
+  communityId: string,
+  userId: string,
+  role: 'member' | 'moderator'
+) {
+  const client = getSupabaseClient();
+  if (!client) return { error: new Error('Supabase not configured') };
+  return client
+    .from('community_members')
+    .update({ role })
+    .eq('community_id', communityId)
+    .eq('user_id', userId);
+}
+
+// --- AUTH COMPLETION (SRS 3.2) ---
+
+/**
+ * Changes the signed-in user's password.
+ *
+ * The current password is re-checked first: Supabase's updateUser does not
+ * require it, so without this anyone holding an unlocked phone could change
+ * the password and take over the account.
+ */
+export async function changePassword(currentPassword: string, newPassword: string) {
+  const client = getSupabaseClient();
+  if (!client) return { error: new Error('Supabase not configured') };
+
+  const { data: userData } = await client.auth.getUser();
+  const email = userData?.user?.email;
+  if (!email) return { error: new Error('Your session expired. Sign in and try again.') };
+
+  const { error: reauthError } = await client.auth.signInWithPassword({
+    email,
+    password: currentPassword,
+  });
+  if (reauthError) return { error: new Error('Your current password is incorrect.') };
+
+  const { error } = await client.auth.updateUser({ password: newPassword });
+  return { error };
+}
+
+/** Sends a password reset email. */
+export async function sendPasswordReset(email: string) {
+  const client = getSupabaseClient();
+  if (!client) return { error: new Error('Supabase not configured') };
+  return client.auth.resetPasswordForEmail(email.trim());
+}
+
+// --- SEARCH & DISCOVERY FILTERS (SRS 3.11) ---
+
+export type TutorSearchFilters = {
+  subjects?: string[];
+  skillLevels?: string[];
+  availability?: string[];
+};
+
+/**
+ * Finds tutors matching the filter chips. The filters screen collected these
+ * and never applied them to anything.
+ */
+export async function searchTutors(filters: TutorSearchFilters): Promise<UserProfile[]> {
+  const client = getSupabaseClient();
+  if (!client) return [];
+  try {
+    let query = client.from('profiles').select('*');
+
+    if (filters.subjects?.length) {
+      // Match if any declared skill or interest overlaps the chosen subjects.
+      // Values are quoted: an unquoted subject containing a space or comma
+      // (e.g. "Computer Science") would corrupt the filter expression.
+      const list = filters.subjects
+        .map((s) => `"${s.replace(/"/g, '')}"`)
+        .join(',');
+      query = query.or(`skills.ov.{${list}},interests.ov.{${list}}`);
+    }
+    if (filters.skillLevels?.length) {
+      query = query.in('skill_level', filters.skillLevels);
+    }
+    if (filters.availability?.length) {
+      query = query.overlaps('availability', filters.availability);
+    }
+
+    const { data, error } = await query.limit(50);
+    if (error || !data) return [];
+
+    return data.map((d: any) => ({
+      id: d.id,
+      name: d.full_name || 'User',
+      email: d.email || '',
+      university: d.university || 'KNUST',
+      major: d.major || 'Computer Science',
+      year: d.year || '1st Year',
+      bio: d.bio || '',
+      skills: Array.isArray(d.skills) ? d.skills : [],
+      interests: Array.isArray(d.interests) ? d.interests : [],
+      skillLevel: d.skill_level || 'Beginner',
+      rating: d.rating ? String(d.rating) : '5.0',
+      points: d.points ?? 100,
+      sessions: d.sessions_count ?? 0,
+      communities: d.communities_count ?? 1,
+      streak: d.streak || '1 day',
+      avatar: d.avatar_url || DEFAULT_AVATAR,
+    }));
+  } catch (err) {
+    console.warn('Tutor search error:', err);
+    return [];
+  }
+}
+
+
+// --- PROGRESS TRACKING (SRS 3.9) ---
+
+export type AttendanceRecord = {
+  sessionId: string;
+  title: string;
+  tag: string;
+  joinedAt: string;
+  minutes: number;
+};
+
+/** The signed-in user's own session history. */
+export async function getMyAttendance(limit = 50): Promise<AttendanceRecord[]> {
+  const client = getSupabaseClient();
+  if (!client) return [];
+  try {
+    const { data: userData } = await client.auth.getUser();
+    const userId = userData?.user?.id;
+    if (!userId) return [];
+
+    const { data, error } = await client
+      .from('session_attendance')
+      .select('session_id, joined_at, minutes_attended, sessions(title, tag)')
+      .eq('user_id', userId)
+      .order('joined_at', { ascending: false })
+      .limit(limit);
+
+    if (error || !data) return [];
+    return data.map((row: any) => ({
+      sessionId: row.session_id,
+      title: row.sessions?.title || 'Study session',
+      tag: row.sessions?.tag || 'General',
+      joinedAt: row.joined_at,
+      minutes: row.minutes_attended ?? 0,
+    }));
+  } catch (err) {
+    console.warn('Attendance history error:', err);
+    return [];
+  }
+}
+
+export type ProgressSummary = {
+  sessionsAttended: number;
+  minutesLearned: number;
+  pointsEarned: number;
+};
+
+/** Totals for the profile screen, derived rather than stored on the profile row. */
+export async function getMyProgress(): Promise<ProgressSummary> {
+  const empty = { sessionsAttended: 0, minutesLearned: 0, pointsEarned: 0 };
+  const client = getSupabaseClient();
+  if (!client) return empty;
+  try {
+    const { data: userData } = await client.auth.getUser();
+    const userId = userData?.user?.id;
+    if (!userId) return empty;
+
+    const [attendance, points] = await Promise.all([
+      client.from('session_attendance').select('minutes_attended').eq('user_id', userId),
+      client.from('points_ledger').select('points').eq('user_id', userId),
+    ]);
+
+    const rows = attendance.data ?? [];
+    return {
+      sessionsAttended: rows.length,
+      minutesLearned: rows.reduce((sum: number, r: any) => sum + (r.minutes_attended ?? 0), 0),
+      pointsEarned: (points.data ?? []).reduce((sum: number, r: any) => sum + (r.points ?? 0), 0),
+    };
+  } catch (err) {
+    console.warn('Progress summary error:', err);
+    return empty;
+  }
+}
+
+/** Tutor-side view: who attended a session you host (SRS 3.9). */
+export async function getSessionParticipation(sessionId: string) {
+  const client = getSupabaseClient();
+  if (!client || !sessionId) return [];
+  try {
+    const { data, error } = await client
+      .from('session_attendance')
+      .select('user_id, joined_at, minutes_attended, profiles(full_name, avatar_url)')
+      .eq('session_id', sessionId)
+      .order('joined_at', { ascending: true });
+
+    if (error || !data) return [];
+    return data.map((row: any) => ({
+      id: row.user_id,
+      name: row.profiles?.full_name || 'Student',
+      avatar: row.profiles?.avatar_url || DEFAULT_AVATAR,
+      joinedAt: row.joined_at,
+      minutes: row.minutes_attended ?? 0,
+    }));
+  } catch (err) {
+    console.warn('Participation error:', err);
+    return [];
+  }
+}
+
+// --- MODERATION (SRS 3.12) ---
+
+export type ReportTarget = 'post' | 'comment' | 'message' | 'profile' | 'community';
+
+/** Files a report. Visible only to the reporter and to admins. */
+export async function reportContent(
+  targetType: ReportTarget,
+  targetId: string,
+  reason: string
+) {
+  const client = getSupabaseClient();
+  if (!client) return { error: new Error('Supabase not configured') };
+  try {
+    const { data: userData } = await client.auth.getUser();
+    const userId = userData?.user?.id;
+    if (!userId) return { error: new Error('Sign in to report content.') };
+
+    const { error } = await client.from('reports').insert([
+      { reporter_id: userId, target_type: targetType, target_id: targetId, reason },
+    ]);
+    return { error };
+  } catch (err: any) {
+    return { error: err };
+  }
+}
+
+export type ModerationReport = {
+  id: string;
+  targetType: string;
+  targetId: string;
+  reason: string;
+  status: string;
+  createdAt: string;
+};
+
+/** Admin queue. RLS returns only the caller's own reports unless they are an admin. */
+export async function getOpenReports(): Promise<ModerationReport[]> {
+  const client = getSupabaseClient();
+  if (!client) return [];
+  try {
+    const { data, error } = await client
+      .from('reports')
+      .select('*')
+      .in('status', ['open', 'reviewing'])
+      .order('created_at', { ascending: false });
+
+    if (error || !data) return [];
+    return data.map((r: any) => ({
+      id: r.id,
+      targetType: r.target_type,
+      targetId: r.target_id,
+      reason: r.reason,
+      status: r.status,
+      createdAt: r.created_at,
+    }));
+  } catch (err) {
+    console.warn('Reports fetch error:', err);
+    return [];
+  }
+}
+
+/** Admin-only: enforced by the "Admins resolve reports" policy. */
+export async function resolveReport(reportId: string, status: 'resolved' | 'dismissed') {
+  const client = getSupabaseClient();
+  if (!client) return { error: new Error('Supabase not configured') };
+  const { data: userData } = await client.auth.getUser();
+  return client
+    .from('reports')
+    .update({
+      status,
+      resolved_by: userData?.user?.id ?? null,
+      resolved_at: new Date().toISOString(),
+    })
+    .eq('id', reportId);
+}
+
+/** Whether the signed-in user can see the moderation queue. */
+export async function getIsAdmin(): Promise<boolean> {
+  const client = getSupabaseClient();
+  if (!client) return false;
+  try {
+    const { data: userData } = await client.auth.getUser();
+    const userId = userData?.user?.id;
+    if (!userId) return false;
+    const { data } = await client
+      .from('profiles')
+      .select('is_admin')
+      .eq('id', userId)
+      .single();
+    return Boolean(data?.is_admin);
+  } catch {
+    return false;
+  }
+}
+
 // --- COMMUNITY SERVICES ---
 
 export async function getCommunities(): Promise<CommunityItem[]> {
@@ -608,6 +957,9 @@ export async function getMessages(threadId: string, currentUserId?: string): Pro
       sender: activeUserId && msg.sender_id === activeUserId ? 'me' : 'them',
       text: msg.content,
       time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      attachmentPath: msg.attachment_path || undefined,
+      attachmentName: msg.attachment_name || undefined,
+      attachmentType: msg.attachment_type || undefined,
     }));
   } catch (err) {
     console.error('Error fetching messages:', err);
@@ -615,7 +967,18 @@ export async function getMessages(threadId: string, currentUserId?: string): Pro
   }
 }
 
-export async function sendSupabaseMessage(threadId: string, text: string, senderId?: string) {
+export type MessageAttachment = {
+  path: string;
+  name: string;
+  mimeType?: string;
+};
+
+export async function sendSupabaseMessage(
+  threadId: string,
+  text: string,
+  senderId?: string,
+  attachment?: MessageAttachment
+) {
   const client = getSupabaseClient();
   if (!client) return { data: null, error: new Error('Supabase not configured') };
   let activeSenderId = senderId;
@@ -624,7 +987,15 @@ export async function sendSupabaseMessage(threadId: string, text: string, sender
     activeSenderId = userData?.user?.id;
   }
   return client.from('messages').insert([
-    { thread_id: threadId, content: text, sender_id: activeSenderId || null, created_at: new Date().toISOString() }
+    {
+      thread_id: threadId,
+      content: text,
+      sender_id: activeSenderId || null,
+      created_at: new Date().toISOString(),
+      attachment_path: attachment?.path ?? null,
+      attachment_name: attachment?.name ?? null,
+      attachment_type: attachment?.mimeType ?? null,
+    },
   ]);
 }
 
@@ -654,6 +1025,11 @@ export function subscribeToThreadMessages(
           sender: isMe ? 'me' : 'them',
           text: newMsg.content || newMsg.body || '',
           time: new Date(newMsg.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          // Without these an attachment sent by someone else arrives live as a
+          // blank bubble — the file is only visible after a reload.
+          attachmentPath: newMsg.attachment_path || undefined,
+          attachmentName: newMsg.attachment_name || undefined,
+          attachmentType: newMsg.attachment_type || undefined,
         });
       }
     )

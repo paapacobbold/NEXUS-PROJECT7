@@ -29,7 +29,7 @@ import { EmptyState, SkeletonList } from '../components/States';
 import { getLeaderboard, LeaderboardRow } from '../lib/supabase';
 import { FilterKey, useAppStore } from '../context/AppStoreContext';
 import { brand, filterSections, RecordedLecture, sampleRecordings } from '../data/mockData';
-import { styles } from '../styles/appStyles';
+import { styles, useThemeColors } from '../styles/appStyles';
 
 function toTitleCase(value: string) {
   return value.replace(/([A-Z])/g, ' $1').replace(/^./, (char) => char.toUpperCase());
@@ -44,6 +44,7 @@ function getLevelTier(points: number) {
 }
 
 export function LeaderboardScreen({ onBack }: { onBack: () => void }) {
+  const colors = useThemeColors();
   const { profile, updateProfile } = useAppStore();
   // Was rendering the mock `sampleLeaderboard` array; now reads the aggregated
   // leaderboard view built from the points ledger and attendance table.
@@ -141,14 +142,14 @@ export function LeaderboardScreen({ onBack }: { onBack: () => void }) {
           leaders.map((item, index) => (
             <View
               key={item.id}
-              style={[styles.threadRow, { backgroundColor: '#fff', padding: 14, borderRadius: 16, marginBottom: 8 }]}
+              style={[styles.threadRow, { backgroundColor: colors.card, padding: 14, borderRadius: 16, marginBottom: 8 }]}
             >
               <Text
                 style={{
                   fontSize: 16,
                   fontWeight: '800',
                   width: 28,
-                  color: index === 0 ? '#E07038' : brand.text,
+                  color: index === 0 ? '#E07038' : colors.text,
                 }}
               >
                 #{index + 1}
@@ -176,7 +177,7 @@ export function LeaderboardScreen({ onBack }: { onBack: () => void }) {
                 <Text style={styles.mutedCopySmall}>Available Balance: {profile.points} XP Points</Text>
               </View>
               <Pressable onPress={() => { setShowPerkStore(false); setClaimedVoucher(null); }}>
-                <Ionicons name="close-circle" size={26} color={brand.muted} />
+                <Ionicons name="close-circle" size={26} color={colors.muted} />
               </Pressable>
             </View>
 
@@ -186,7 +187,7 @@ export function LeaderboardScreen({ onBack }: { onBack: () => void }) {
                 <Text style={[styles.mutedCopy, { textAlign: 'center' }]}>{claimedVoucher.title}</Text>
 
                 <View style={styles.voucherCodeBox}>
-                  <Text style={{ fontSize: 11, color: brand.muted, marginBottom: 4 }}>YOUR VOUCHER CLAIM CODE</Text>
+                  <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 4 }}>YOUR VOUCHER CLAIM CODE</Text>
                   <Text style={styles.voucherCodeText}>{claimedVoucher.code}</Text>
                 </View>
 
@@ -222,7 +223,7 @@ export function LeaderboardScreen({ onBack }: { onBack: () => void }) {
                           borderRadius: 12,
                         }}
                       >
-                        <Text style={{ fontSize: 12, fontWeight: '800', color: canAfford ? '#fff' : brand.muted }}>
+                        <Text style={{ fontSize: 12, fontWeight: '800', color: canAfford ? '#fff' : colors.muted }}>
                           {canAfford ? 'Redeem' : 'Need XP'}
                         </Text>
                       </Pressable>
@@ -267,6 +268,7 @@ function LecturePlayer({ url, playing }: { url: string; playing: boolean }) {
   );
 }
 export function RecordingsScreen({ onBack }: { onBack: () => void }) {
+  const colors = useThemeColors();
   const { profile, updateProfile } = useAppStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
@@ -421,7 +423,7 @@ export function RecordingsScreen({ onBack }: { onBack: () => void }) {
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholder="Search lectures by topic or tutor..."
-            placeholderTextColor={brand.muted}
+            placeholderTextColor={colors.muted}
             style={styles.input}
           />
         </View>
@@ -540,6 +542,7 @@ export function FiltersScreen({
   onBack: () => void;
   onApply: () => void;
 }) {
+  const colors = useThemeColors();
   const { selectedFilters, toggleFilter, resetFilters } = useAppStore();
 
   return (
@@ -547,7 +550,7 @@ export function FiltersScreen({
       <ScrollView contentContainerStyle={styles.formScreen}>
         <View style={styles.screenHeaderRow}>
           <Pressable onPress={onBack} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={20} color={brand.text} />
+            <Ionicons name="arrow-back" size={20} color={colors.text} />
           </Pressable>
           <Text style={styles.screenTitle}>Filters</Text>
           <Pressable onPress={resetFilters}>

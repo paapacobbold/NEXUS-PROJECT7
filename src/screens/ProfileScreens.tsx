@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Image,
   Modal,
@@ -13,6 +13,7 @@ import {
 import { Text } from '../components/Typography';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppImage } from '../components/AppImage';
+import { getIsAdmin, getMyProgress, ProgressSummary } from '../lib/supabase';
 import { uploadFile } from '../lib/uploads';
 import { useToast } from '../components/Toast';
 import { notifyError } from '../lib/haptics';
@@ -28,20 +29,51 @@ import {
 import { useAppStore } from '../context/AppStoreContext';
 import { brand, DEFAULT_AVATAR, NotificationPrefs, profileBadges, UserProfile } from '../data/mockData';
 import { updateUserProfile } from '../lib/supabase';
-import { styles } from '../styles/appStyles';
+import { styles, useThemeColors } from '../styles/appStyles';
 
 export function ProfileScreen({
   onEditProfile,
   onChangePassword,
   onNotificationPreferences,
+  onOpenModeration,
   onSignOut,
 }: {
   onEditProfile: () => void;
   onChangePassword: () => void;
   onNotificationPreferences: () => void;
+  onOpenModeration?: () => void;
   onSignOut?: () => void;
 }) {
+  const colors = useThemeColors();
   const { profile, updateProfile } = useAppStore();
+
+  // Sessions and points used to be static values on the profile row. Read the
+  // real totals from attendance and the points ledger instead, falling back to
+  // the stored values until they load.
+  const [progress, setProgress] = useState<ProgressSummary | null>(null);
+  // The moderation queue is only offered to admins — a non-admin opening it
+  // would see an empty list, because RLS returns only their own reports.
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    getIsAdmin().then((value) => {
+      if (active) setIsAdmin(value);
+    });
+    return () => {
+      active = false;
+    };
+  }, [profile.id]);
+
+  useEffect(() => {
+    let active = true;
+    getMyProgress().then((summary) => {
+      if (active) setProgress(summary);
+    });
+    return () => {
+      active = false;
+    };
+  }, [profile.id]);
   const [endorsements, setEndorsements] = useState<Record<string, number>>({
     'Calculus III': 18,
     'Data Structures': 24,
@@ -130,9 +162,12 @@ export function ProfileScreen({
         <Text style={styles.profileBio}>{profile.bio}</Text>
 
         <View style={styles.statsRow}>
-          <StatCard label="Sessions" value={String(profile.sessions)} />
+          <StatCard
+            label="Sessions"
+            value={String(progress?.sessionsAttended ?? profile.sessions)}
+          />
           <StatCard label="Communities" value={String(profile.communities)} />
-          <StatCard label="Points" value={String(profile.points)} />
+          <StatCard label="Points" value={String(progress?.pointsEarned ?? profile.points)} />
         </View>
 
         {/* Skills & Interactive Endorsements */}
@@ -163,7 +198,7 @@ export function ProfileScreen({
         {reviews.map((rev) => (
           <View key={rev.id} style={styles.reviewCard}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={{ fontWeight: '800', fontSize: 13, color: brand.text }}>{rev.author}</Text>
+              <Text style={{ fontWeight: '800', fontSize: 13, color: colors.text }}>{rev.author}</Text>
               <Text style={styles.mutedCopySmall}>{rev.date}</Text>
             </View>
             <View style={{ flexDirection: 'row', gap: 2 }}>
@@ -176,7 +211,7 @@ export function ProfileScreen({
                 />
               ))}
             </View>
-            <Text style={{ fontSize: 13, color: brand.text, marginTop: 2 }}>{rev.comment}</Text>
+            <Text style={{ fontSize: 13, color: colors.text, marginTop: 2 }}>{rev.comment}</Text>
           </View>
         ))}
 
@@ -189,6 +224,14 @@ export function ProfileScreen({
           onPress={onNotificationPreferences}
           icon="notifications-outline"
         />
+
+        {isAdmin && onOpenModeration ? (
+          <ActionRow
+            label="Moderation Queue"
+            onPress={onOpenModeration}
+            icon="shield-checkmark-outline"
+          />
+        ) : null}
 
         <Pressable onPress={onSignOut} style={styles.signOutButton}>
           <Ionicons name="log-out-outline" size={18} color={brand.danger} />
@@ -203,7 +246,7 @@ export function ProfileScreen({
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Write Tutor Review ⭐</Text>
               <Pressable onPress={() => setShowReviewModal(false)}>
-                <Ionicons name="close-circle" size={26} color={brand.muted} />
+                <Ionicons name="close-circle" size={26} color={colors.muted} />
               </Pressable>
             </View>
 
@@ -216,7 +259,7 @@ export function ProfileScreen({
                   <Ionicons
                     name={star <= newRating ? 'star' : 'star-outline'}
                     size={36}
-                    color={star <= newRating ? '#E3A322' : brand.muted}
+                    color={star <= newRating ? '#E3A322' : colors.muted}
                   />
                 </Pressable>
               ))}
@@ -245,6 +288,7 @@ export function EditProfileScreen({
   onBack: () => void;
   onSave: () => void;
 }) {
+  const colors = useThemeColors();
   const { profile, updateProfile } = useAppStore();
   const toast = useToast();
   const [localProfile, setLocalProfile] = useState(profile);
@@ -328,7 +372,7 @@ export function EditProfileScreen({
       <ScrollView contentContainerStyle={styles.formScreen}>
         <View style={styles.screenHeaderRow}>
           <Pressable onPress={onBack} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={20} color={brand.text} />
+            <Ionicons name="arrow-back" size={20} color={colors.text} />
           </Pressable>
           <Text style={styles.screenTitle}>Edit Profile</Text>
           <Pressable onPress={handleSaveProfile} style={styles.saveChip}>
@@ -397,7 +441,7 @@ export function EditProfileScreen({
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Change Profile Picture</Text>
               <Pressable onPress={() => setShowAvatarModal(false)}>
-                <Ionicons name="close-circle" size={26} color={brand.muted} />
+                <Ionicons name="close-circle" size={26} color={colors.muted} />
               </Pressable>
             </View>
 
@@ -452,8 +496,8 @@ export function EditProfileScreen({
                 pressed && { opacity: 0.8, transform: [{ scale: 0.97 }] },
               ]}
             >
-              <Ionicons name="person-circle-outline" size={20} color={brand.text} />
-              <Text style={{ color: brand.text, fontWeight: '700', fontSize: 14 }}>
+              <Ionicons name="person-circle-outline" size={20} color={colors.text} />
+              <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>
                 Use Facebook Default Silhouette
               </Text>
             </Pressable>
@@ -484,6 +528,50 @@ export function ChangePasswordScreen({
   const [currentPass, setCurrentPass] = useState('');
   const [newPass, setNewPass] = useState('');
   const [confirmPass, setConfirmPass] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const toast = useToast();
+
+  // The button used to call onBack() and nothing else — the screen collected
+  // three passwords and discarded them.
+  const handleUpdatePassword = async () => {
+    if (!currentPass || !newPass || !confirmPass) {
+      setError('Fill in all three fields.');
+      return;
+    }
+    if (newPass.length < 8) {
+      setError('Your new password must be at least 8 characters.');
+      return;
+    }
+    if (newPass !== confirmPass) {
+      setError('The new passwords do not match.');
+      return;
+    }
+    if (newPass === currentPass) {
+      setError('Your new password must be different from the current one.');
+      return;
+    }
+
+    setSaving(true);
+    setError('');
+    try {
+      const { changePassword } = await import('../lib/supabase');
+      const { error: changeError } = await changePassword(currentPass, newPass);
+      if (changeError) {
+        setError(changeError.message);
+        notifyError();
+        return;
+      }
+      toast.show('Password updated');
+      onSaved?.();
+      onBack();
+    } catch (err: any) {
+      setError(err?.message || 'Could not update your password. Try again.');
+      notifyError();
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.lightScreen}>
@@ -497,13 +585,21 @@ export function ChangePasswordScreen({
           onChangeText={setCurrentPass}
           placeholder="Enter current password"
           secureTextEntry
+          autoCapitalize="none"
+          autoComplete="current-password"
+          textContentType="password"
+          light
         />
         <LabelledInput
           label="New Password"
           value={newPass}
           onChangeText={setNewPass}
-          placeholder="Enter new password"
+          placeholder="At least 8 characters"
           secureTextEntry
+          autoCapitalize="none"
+          autoComplete="new-password"
+          textContentType="newPassword"
+          light
         />
         <LabelledInput
           label="Confirm New Password"
@@ -511,9 +607,25 @@ export function ChangePasswordScreen({
           onChangeText={setConfirmPass}
           placeholder="Re-enter new password"
           secureTextEntry
+          autoCapitalize="none"
+          autoComplete="new-password"
+          textContentType="newPassword"
+          returnKeyType="go"
+          light
         />
 
-        <PrimaryButton label="Update Password" onPress={onBack} />
+        {error ? (
+          <View style={styles.authErrorBox}>
+            <Ionicons name="alert-circle" size={18} color="#8C2F27" />
+            <Text style={styles.authErrorText}>{error}</Text>
+          </View>
+        ) : null}
+
+        <PrimaryButton
+          label={saving ? 'Updating...' : 'Update Password'}
+          onPress={handleUpdatePassword}
+          loading={saving}
+        />
       </ScrollView>
     </SafeAreaView>
   );

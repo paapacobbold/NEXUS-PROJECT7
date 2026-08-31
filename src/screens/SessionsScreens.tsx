@@ -24,15 +24,16 @@ import {
   PrimaryButton,
   PrimarySmallButton,
 } from '../components/UIComponents';
-import { useRefreshControl } from '../components/States';
+import { EmptyState, useRefreshControl } from '../components/States';
 import { useToast } from '../components/Toast';
 import { tapMedium } from '../lib/haptics';
 import { useAppStore } from '../context/AppStoreContext';
 import { brand, DEFAULT_AVATAR, InPersonMeetup, liveSession, UserProfile } from '../data/mockData';
 import { fetchAllProfiles, getMessages, sendSupabaseMessage, subscribeToThreadMessages } from '../lib/supabase';
 import { ParticipantVideo } from '../components/ParticipantVideo';
+import { Linking, Platform } from 'react-native';
 import { useVideoRoom } from '../lib/video';
-import { styles } from '../styles/appStyles';
+import { styles, useThemeColors } from '../styles/appStyles';
 
 export function SessionsScreen({
   onOpenFilters,
@@ -47,10 +48,47 @@ export function SessionsScreen({
   onOpenLiveSession: (sessionId?: string) => void;
   onOpenRecordings: () => void;
 }) {
-  const { sessionsList, meetupsList, toggleRSVPMeetup } = useAppStore();
+  const colors = useThemeColors();
+  const { sessionsList, meetupsList, toggleRSVPMeetup, selectedFilters } = useAppStore();
   const [selectedMeetupMap, setSelectedMeetupMap] = useState<InPersonMeetup | null>(null);
   const refreshControl = useRefreshControl();
   const toast = useToast();
+
+  // The filters screen collected these and never applied them to anything.
+  // Subject chips map onto a session's tag.
+  const subjectFilters = selectedFilters.subject;
+  const visibleSessions = subjectFilters.length
+    ? sessionsList.filter((s) =>
+        subjectFilters.some((subject) =>
+          (s.tag || '').toLowerCase().includes(subject.toLowerCase())
+        )
+      )
+    : sessionsList;
+
+  /**
+   * Opens the meetup location in the device's maps app.
+   *
+   * An embedded map needs a Google Maps API key on Android; this needs nothing
+   * and also covers the SRS's optional "directions" bonus, since the maps app
+   * routes from the user's current position.
+   */
+  const handleOpenInMaps = async (meetup: InPersonMeetup) => {
+    const query = encodeURIComponent(meetup.location);
+    const url = Platform.select({
+      ios: `maps://?q=${query}`,
+      android: `geo:0,0?q=${query}`,
+      default: `https://www.google.com/maps/search/?api=1&query=${query}`,
+    })!;
+
+    try {
+      const supported = await Linking.canOpenURL(url);
+      await Linking.openURL(
+        supported ? url : `https://www.google.com/maps/search/?api=1&query=${query}`
+      );
+    } catch {
+      toast.show('Could not open Maps on this device.', 'error');
+    }
+  };
 
   const handleRSVP = (meetup: InPersonMeetup) => {
     tapMedium();
@@ -77,7 +115,7 @@ export function SessionsScreen({
         <Text style={styles.liveHeroTitle}>{liveSession.title}</Text>
         <Text style={styles.liveHeroMeta}>25 participants · 120 min</Text>
         <View style={styles.buttonRow}>
-          <PrimarySmallButton label="Join live now" onPress={onOpenLiveSession} />
+          <PrimarySmallButton label="Join live now" onPress={() => onOpenLiveSession()} />
           <GhostSmallButton label="+ Schedule Live" onPress={onOpenSchedule} />
         </View>
       </View>
@@ -85,21 +123,29 @@ export function SessionsScreen({
       <View style={{ flexDirection: 'row', gap: 10, marginVertical: 10 }}>
         <Pressable onPress={onOpenCreateMeetup} style={[styles.flexFill, { backgroundColor: '#EBF7EE', padding: 12, borderRadius: 16, borderWidth: 1, borderColor: '#CDECD4' }]}>
           <Text style={{ fontSize: 13, fontWeight: '700', color: '#2F8B4E' }}>+ Campus Meetup</Text>
-          <Text style={{ fontSize: 11, color: brand.muted, marginTop: 2 }}>In-person peer study</Text>
+          <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>In-person peer study</Text>
         </Pressable>
         <Pressable onPress={onOpenRecordings} style={[styles.flexFill, { backgroundColor: '#F5EFFD', padding: 12, borderRadius: 16, borderWidth: 1, borderColor: '#E3D3FB' }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <Feather name="play" size={13} color="#6B21A8" />
             <Text style={{ fontSize: 13, fontWeight: '700', color: '#6B21A8' }}>Watch Recordings</Text>
           </View>
-          <Text style={{ fontSize: 11, color: brand.muted, marginTop: 2 }}>Video modules</Text>
+          <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>Video modules</Text>
         </Pressable>
       </View>
 
       <View style={styles.sectionHeadingRow}>
         <Text style={styles.sectionTitle}>Scheduled Live Sessions</Text>
       </View>
-      {sessionsList.map((session) => (
+      {visibleSessions.length === 0 ? (
+        <EmptyState
+          icon="funnel-outline"
+          title="No sessions match your filters"
+          message="Clear a filter or two to see more scheduled sessions."
+          compact
+        />
+      ) : null}
+      {visibleSessions.map((session) => (
         <View key={session.id} style={styles.sessionListCard}>
           <View style={styles.sessionListTop}>
             <Avatar source={session.image} size={42} />
@@ -128,9 +174,17 @@ export function SessionsScreen({
             </Pressable>
             <Pill label={`${meetup.rsvpCount} Attending`} compact />
           </View>
-          <Text style={styles.mutedCopySmall}>Location: {meetup.location}</Text>
+          <Pressable
+            onPress={() => handleOpenInMaps(meetup)}
+            accessibilityRole="button"
+            accessibilityLabel={`Open ${meetup.location} in Maps`}
+            style={({ pressed }) => [styles.meetupLocationRow, pressed && { opacity: 0.7 }]}
+          >
+            <Ionicons name="location-outline" size={14} color={brand.primary} />
+            <Text style={[styles.mutedCopySmall, styles.meetupLocationText]}>{meetup.location}</Text>
+          </Pressable>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Feather name="calendar" size={13} color={brand.muted} />
+            <Feather name="calendar" size={13} color={colors.muted} />
             <Text style={styles.sessionTime}>{meetup.dateTime} · Host: {meetup.organizer}</Text>
           </View>
 
@@ -139,8 +193,8 @@ export function SessionsScreen({
               onPress={() => setSelectedMeetupMap(meetup)}
               style={{ backgroundColor: '#ECE7E0', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 4 }}
             >
-              <Ionicons name="map-outline" size={14} color={brand.text} />
-              <Text style={{ fontSize: 12, fontWeight: '700', color: brand.text }}>View Map Pin</Text>
+              <Ionicons name="map-outline" size={14} color={colors.text} />
+              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text }}>View Map Pin</Text>
             </Pressable>
 
             <Pressable
@@ -166,7 +220,7 @@ export function SessionsScreen({
                   <Text style={styles.mutedCopySmall}>{selectedMeetupMap.title}</Text>
                 </View>
                 <Pressable onPress={() => setSelectedMeetupMap(null)}>
-                  <Ionicons name="close-circle" size={26} color={brand.muted} />
+                  <Ionicons name="close-circle" size={26} color={colors.muted} />
                 </Pressable>
               </View>
 
@@ -194,7 +248,7 @@ export function SessionsScreen({
                 <Text style={styles.directionsText}>~3 min walk from Main Campus Science Complex</Text>
               </View>
 
-              <Text style={{ color: brand.text, fontSize: 13 }}>
+              <Text style={{ color: colors.text, fontSize: 13 }}>
                 Host: <Text style={{ fontWeight: '800' }}>{selectedMeetupMap.organizer}</Text> · {selectedMeetupMap.rsvpCount} Peer Learners Attending
               </Text>
 

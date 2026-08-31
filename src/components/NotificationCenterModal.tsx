@@ -9,7 +9,7 @@ import {
 import { Text } from './Typography';
 import { AppRoute } from '../context/AppStoreContext';
 import { brand } from '../data/mockData';
-import { styles } from '../styles/appStyles';
+import { styles, useThemeColors } from '../styles/appStyles';
 import { Pill, PrimaryButton } from './UIComponents';
 
 export type NotificationCategory = 'All' | 'Unread' | 'Sessions' | 'Meetups';
@@ -34,6 +34,7 @@ export function NotificationCenterModal({
   onClose: () => void;
   onNavigate: (route: AppRoute) => void;
 }) {
+  const colors = useThemeColors();
   const [activeCategory, setActiveCategory] = useState<NotificationCategory>('All');
   const [notifications, setNotifications] = useState<ActivityNotification[]>([
     {
@@ -121,7 +122,7 @@ export function NotificationCenterModal({
                 </Pressable>
               ) : null}
               <Pressable onPress={onClose}>
-                <Ionicons name="close-circle" size={26} color={brand.muted} />
+                <Ionicons name="close-circle" size={26} color={colors.muted} />
               </Pressable>
             </View>
           </View>
@@ -139,7 +140,7 @@ export function NotificationCenterModal({
           <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 380 }}>
             {filteredNotifications.length === 0 ? (
               <View style={{ paddingVertical: 30, alignItems: 'center' }}>
-                <Ionicons name="notifications-off-outline" size={32} color={brand.muted} />
+                <Ionicons name="notifications-off-outline" size={32} color={colors.muted} />
                 <Text style={[styles.mutedCopy, { marginTop: 8 }]}>No activity alerts in this category.</Text>
               </View>
             ) : (
@@ -158,7 +159,7 @@ export function NotificationCenterModal({
                       <Text style={[styles.communityName, { fontSize: 14 }]} numberOfLines={1}>{n.title}</Text>
                       <Text style={styles.mutedCopySmall}>{n.time}</Text>
                     </View>
-                    <Text style={[styles.mutedCopySmall, { color: brand.text, marginTop: 2 }]} numberOfLines={2}>
+                    <Text style={[styles.mutedCopySmall, { color: colors.text, marginTop: 2 }]} numberOfLines={2}>
                       {n.message}
                     </Text>
                   </View>

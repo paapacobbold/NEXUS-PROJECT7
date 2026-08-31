@@ -444,6 +444,18 @@ function buildStyles(c: ThemeColors) {
       alignItems: 'center',
       justifyContent: 'center',
     },
+    meetupLocationRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingVertical: 2,
+    },
+    meetupLocationText: {
+      textDecorationLine: 'underline',
+    },
+    splashStack: {
+      alignItems: 'center',
+    },
     splashHint: {
       position: 'absolute',
       alignSelf: 'center',
@@ -1218,8 +1230,20 @@ function buildStyles(c: ThemeColors) {
       paddingBottom: 80,
     },
     communityHero: {
-      height: 200,
+      height: 240,
       justifyContent: 'flex-end',
+      backgroundColor: brand.primary,
+    },
+    /** Pulls the hero out of screenContent's padding so it bleeds edge to edge. */
+    communityHeroBleed: {
+      marginHorizontal: -20,
+      marginTop: -14,
+      marginBottom: 4,
+    },
+    communityHeroBody: {
+      paddingHorizontal: 20,
+      paddingBottom: 18,
+      gap: 2,
     },
     communityHeroOverlay: {
       padding: 18,
@@ -1232,6 +1256,14 @@ function buildStyles(c: ThemeColors) {
       right: 14,
       flexDirection: 'row',
       justifyContent: 'space-between',
+    },
+    heroIconButton: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(7,9,24,0.45)',
     },
     communityHeroTitle: {
       color: '#fff',
@@ -1247,8 +1279,9 @@ function buildStyles(c: ThemeColors) {
       gap: 20,
       paddingHorizontal: 20,
       paddingVertical: 14,
+      marginHorizontal: -20,
       borderBottomWidth: 1,
-      borderBottomColor: brand.border,
+      borderBottomColor: c.border,
       backgroundColor: c.card,
     },
     communityTabText: {
@@ -1286,6 +1319,34 @@ function buildStyles(c: ThemeColors) {
       fontWeight: '800',
       fontSize: 14,
     },
+    communityPanel: {
+      backgroundColor: c.card,
+      borderColor: c.border,
+      borderWidth: 1,
+      borderRadius: radius.md,
+      padding: 14,
+      marginBottom: 12,
+    },
+    communityPanelTitle: {
+      ...type.bodyStrong,
+      color: c.text,
+      marginBottom: 8,
+    },
+    communityPanelHint: {
+      ...type.caption,
+      color: c.muted,
+    },
+    postInput: {
+      backgroundColor: c.inputBg,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      fontSize: 13,
+      color: c.text,
+      marginBottom: 8,
+    },
     postCard: {
       backgroundColor: c.card,
       borderRadius: 18,
@@ -1319,8 +1380,8 @@ function buildStyles(c: ThemeColors) {
       flexDirection: 'row',
       gap: 10,
       paddingHorizontal: 20,
-      paddingVertical: 14,
-      backgroundColor: 'rgba(255,255,255,0.94)',
+      paddingTop: 14,
+      backgroundColor: c.card,
       borderTopWidth: 1,
       borderTopColor: brand.border,
     },
@@ -2086,6 +2147,17 @@ function buildStyles(c: ThemeColors) {
     themeOptionText: {
       ...type.label,
       textAlign: "center",
+    },
+    /* ------------------------- Chat attachments ------------------------- */
+    attachmentRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: space.sm,
+      paddingVertical: 2,
+    },
+    attachmentName: {
+      flex: 1,
+      textDecorationLine: "underline",
     },
   });
 }

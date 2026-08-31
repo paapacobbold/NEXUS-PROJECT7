@@ -34,12 +34,14 @@ import { ProfileScreen, EditProfileScreen, ChangePasswordScreen, NotificationPre
 import { ChatListScreen, PrivateChatScreen } from './src/screens/ChatScreens';
 import { SessionsScreen, ScheduleSessionScreen, SessionLobbyScreen, CreateMeetupScreen } from './src/screens/SessionsScreens';
 import { LeaderboardScreen, RecordingsScreen, FiltersScreen } from './src/screens/SecondaryScreens';
+import { CommunityMembersScreen, ModerationScreen } from './src/screens/ModerationScreens';
 import { OnboardingScreen, SignupScreen, SigninScreen, SplashScreen, WelcomeScreen } from './src/screens/AuthScreens';
 import { applyThemeStyles, getThemeColors, nowTime, styles } from './src/styles/appStyles';
 
 import { resolveAuthenticated, resolveEntryRoute } from './src/lib/session';
 import { GlobalSearchModal } from './src/components/GlobalSearchModal';
 import { NotificationCenterModal } from './src/components/NotificationCenterModal';
+import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { ToastProvider } from './src/components/Toast';
 import {
   clearSessionStorage,
@@ -92,12 +94,16 @@ function ScreenTransitionContainer({ routeKey, children }: { routeKey: string; c
   );
 }
 
+// No filters selected by default. These used to be pre-populated, which was
+// harmless while the filters were inert — now that subject actually filters the
+// sessions list, a seeded value would silently hide sessions on first launch
+// before the user has opened the filters screen.
 const initialFilters: FilterState = {
-  subject: ['Mathematics'],
-  contentType: ['Live Session'],
-  skillLevel: ['Intermediate'],
+  subject: [],
+  contentType: [],
+  skillLevel: [],
   availability: [],
-  minimumRating: ['4+'],
+  minimumRating: [],
 };
 
 export default function App() {
@@ -126,6 +132,7 @@ export default function App() {
   const [messagesByThread, setMessagesByThread] = useState(threadMessages);
   const [activeThreadId, setActiveThreadId] = useState<string>('');
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [activeCommunityId, setActiveCommunityId] = useState<string | null>(null);
   const [selectedFilters, setSelectedFilters] = useState(initialFilters);
   const [communitiesList, setCommunitiesList] = useState(initialCommunities);
   const [sessionsList, setSessionsList] = useState(initialUpcomingSessions);
@@ -143,6 +150,11 @@ export default function App() {
   const currentThreadId = activeThreadId || (threads[0]?.id ?? 'default');
   const featuredCommunity = communitiesList[0] || initialCommunities[0];
 
+  // The community the user actually opened. Falls back to the featured one so a
+  // deep link or a stale id can never render an undefined community.
+  const activeCommunity =
+    communitiesList.find((c) => c.id === activeCommunityId) || featuredCommunity;
+
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -155,7 +167,7 @@ export default function App() {
   const [hasSeenOnboarding, setHasSeenOnboarding] = useState(false);
   const [entryRoute, setEntryRoute] = useState<AppRoute | null>(null);
   // Splash stays up until BOTH its own minimum display time and bootstrap finish.
-  const [splashHeld, setSplashHeld] = useState(true);
+  const [showSplash, setShowSplash] = useState(true);
 
   const markAuthenticated = useCallback(() => {
     setIsAuthenticated(true);
@@ -195,9 +207,13 @@ export default function App() {
         const supabaseLib = await import('./src/lib/supabase');
         hasSupabaseEnv = supabaseLib.hasSupabaseEnv;
         if (hasSupabaseEnv) {
-          // getSession() reads the AsyncStorage-persisted session, so this
-          // resolves offline too.
-          const session = await supabaseLib.getCurrentSession();
+          // getSession() normally reads the AsyncStorage-persisted session, but
+          // it can attempt a token refresh over the network. Cap it so a bad
+          // connection cannot hold the splash open past its own duration.
+          const session = await Promise.race([
+            supabaseLib.getCurrentSession(),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
+          ]);
           hasSupabaseSession = Boolean(session?.user);
         }
       } catch (err) {
@@ -354,13 +370,13 @@ export default function App() {
     initSupabaseData().finally(() => setIsLoadingData(false));
   }, [refreshCollections]);
 
-  // Splash exits only when the minimum display time has elapsed AND the
-  // persisted session has resolved, so the first screen is never wrong.
+  // Navigate underneath the splash as soon as the launch route is known, so
+  // the screen is fully mounted and painted before the overlay dissolves.
   useEffect(() => {
-    if (stack[stack.length - 1] === 'splash' && !splashHeld && entryRoute) {
+    if (entryRoute && stack[stack.length - 1] === 'splash') {
       setStack([entryRoute]);
     }
-  }, [stack, splashHeld, entryRoute]);
+  }, [stack, entryRoute]);
 
   const refreshAll = useCallback(async () => {
     setIsRefreshing(true);
@@ -625,7 +641,8 @@ export default function App() {
   const renderRoute = () => {
     switch (currentRoute) {
       case 'splash':
-        return <SplashScreen onDone={() => setSplashHeld(false)} />;
+        // Rendered as an overlay below, not as a route.
+        return null;
       case 'onboarding':
         return (
           <OnboardingScreen
@@ -677,10 +694,13 @@ export default function App() {
               onOpenFilters={() => push('filters')}
               onOpenProfile={() => push('edit-profile')}
               onOpenLiveSession={(sessionId?: string) => {
-                setActiveSessionId(sessionId ?? null);
+                setActiveSessionId(typeof sessionId === 'string' ? sessionId : null);
                 push('session-lobby');
               }}
-              onOpenCommunity={() => push('community-details')}
+              onOpenCommunity={(communityId?: string) => {
+                setActiveCommunityId(typeof communityId === 'string' ? communityId : null);
+                push('community-details');
+              }}
               onOpenLeaderboard={() => push('leaderboard')}
               onOpenRecordings={() => push('recordings')}
             />
@@ -690,7 +710,10 @@ export default function App() {
         return (
           <MainShell activeTab="communities" onTabChange={openTab}>
             <CommunitiesScreen
-              onOpenCommunity={() => push('community-details')}
+              onOpenCommunity={(communityId?: string) => {
+                setActiveCommunityId(communityId ?? null);
+                push('community-details');
+              }}
               onCreateCommunity={() => push('create-community')}
             />
           </MainShell>
@@ -732,6 +755,7 @@ export default function App() {
               onEditProfile={() => push('edit-profile')}
               onChangePassword={() => push('change-password')}
               onNotificationPreferences={() => push('notification-preferences')}
+              onOpenModeration={() => push('moderation')}
               onSignOut={async () => {
                 await signOut();
                 // Reset the stack so Back cannot re-enter the signed-in app.
@@ -743,7 +767,8 @@ export default function App() {
       case 'community-details':
         return (
           <CommunityDetailScreen
-            community={featuredCommunity}
+            community={activeCommunity}
+            onOpenMembers={() => push('community-members')}
             onBack={goBack}
             onOpenChat={() => push('private-chat')}
             onScheduleSession={() => push('schedule-session')}
@@ -776,6 +801,10 @@ export default function App() {
         return <ChangePasswordScreen onBack={goBack} onSaved={() => goBack()} />;
       case 'notification-preferences':
         return <NotificationPreferencesScreen onBack={goBack} />;
+      case 'moderation':
+        return <ModerationScreen onBack={goBack} />;
+      case 'community-members':
+        return <CommunityMembersScreen community={activeCommunity} onBack={goBack} />;
       default:
         return null;
     }
@@ -791,9 +820,12 @@ export default function App() {
         <ToastProvider>
           <StatusBar style={themeColors.statusBarStyle} />
           <View style={[styles.appShell, { backgroundColor: themeColors.bg }]}>
-            <ScreenTransitionContainer routeKey={currentRoute}>
-              {renderRoute()}
-            </ScreenTransitionContainer>
+            {/* Keyed on the route so recovering unmounts the screen that threw. */}
+            <ErrorBoundary key={currentRoute} onReset={goBack}>
+              <ScreenTransitionContainer routeKey={currentRoute}>
+                {renderRoute()}
+              </ScreenTransitionContainer>
+            </ErrorBoundary>
           </View>
           <GlobalSearchModal
             visible={showGlobalSearch}
@@ -805,6 +837,9 @@ export default function App() {
             onClose={() => setShowNotifications(false)}
             onNavigate={(route) => push(route)}
           />
+          {showSplash ? (
+            <SplashScreen ready={Boolean(entryRoute)} onDone={() => setShowSplash(false)} />
+          ) : null}
         </ToastProvider>
       </AppStoreContext.Provider>
     </SafeAreaProvider>

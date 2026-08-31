@@ -19,7 +19,7 @@ import { useToast } from '../components/Toast';
 import { notifySuccess, tapLight, tapMedium } from '../lib/haptics';
 import { useAppStore } from '../context/AppStoreContext';
 import { brand } from '../data/mockData';
-import { styles } from '../styles/appStyles';
+import { styles, useThemeColors } from '../styles/appStyles';
 
 const hitSlop = { top: 8, bottom: 8, left: 8, right: 8 };
 
@@ -59,10 +59,11 @@ export function HomeScreen({
   onOpenFilters?: () => void;
   onOpenProfile?: () => void;
   onOpenLiveSession?: (sessionId?: string) => void;
-  onOpenCommunity?: () => void;
+  onOpenCommunity?: (communityId?: string) => void;
   onOpenLeaderboard?: () => void;
   onOpenRecordings?: () => void;
 }) {
+  const colors = useThemeColors();
   const { profile, updateProfile, communitiesList, sessionsList, meetupsList, toggleRSVPMeetup } = useAppStore();
   const [loggedHours, setLoggedHours] = useState(2.5);
   const toast = useToast();
@@ -153,7 +154,7 @@ export function HomeScreen({
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Ionicons name="flame" size={22} color="#E07038" />
-            <Text style={{ fontSize: 15, fontWeight: '800', color: brand.text }}>{profile.streak || '5-Day Active Streak'}</Text>
+            <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>{profile.streak || '5-Day Active Streak'}</Text>
           </View>
           <Pill label={`${loggedHours.toFixed(1)} / 3.0 Hrs Today`} compact tint="#EBF7EE" textColor="#2F8B4E" />
         </View>
@@ -166,7 +167,7 @@ export function HomeScreen({
               <Ionicons
                 name={d.active ? 'checkmark-circle' : 'ellipse-outline'}
                 size={16}
-                color={d.active ? '#E07038' : brand.muted}
+                color={d.active ? '#E07038' : colors.muted}
               />
             </View>
           ))}
@@ -196,14 +197,14 @@ export function HomeScreen({
               <Ionicons
                 name={task.done ? 'checkbox' : 'square-outline'}
                 size={22}
-                color={task.done ? brand.primary : brand.muted}
+                color={task.done ? brand.primary : colors.muted}
               />
               <Text
                 style={{
                   flex: 1,
                   fontSize: 14,
                   fontWeight: '700',
-                  color: task.done ? brand.muted : brand.text,
+                  color: task.done ? colors.muted : colors.text,
                   textDecorationLine: task.done ? 'line-through' : 'none',
                 }}
               >
@@ -230,7 +231,7 @@ export function HomeScreen({
             <Ionicons name="trophy" size={16} color="#E07038" />
             <Text style={{ fontSize: 13, fontWeight: '700', color: '#B16A0E' }}>Leaderboard</Text>
           </View>
-          <Text style={{ fontSize: 11, color: brand.muted, marginTop: 2 }}>Rankings & Rewards</Text>
+          <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>Rankings & Rewards</Text>
         </Pressable>
 
         <Pressable
@@ -246,7 +247,7 @@ export function HomeScreen({
             <Ionicons name="videocam" size={16} color={brand.primary} />
             <Text style={{ fontSize: 13, fontWeight: '700', color: brand.primary }}>Recordings</Text>
           </View>
-          <Text style={{ fontSize: 11, color: brand.muted, marginTop: 2 }}>Peer Video Lectures</Text>
+          <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>Peer Video Lectures</Text>
         </Pressable>
       </View>
 
@@ -271,10 +272,10 @@ export function HomeScreen({
       </Pressable>
 
       {/* Dynamic Scheduled Live Sessions */}
-      <SectionHeading title="Scheduled Live Sessions" actionLabel="See all" onAction={onOpenLiveSession} />
+      <SectionHeading title="Scheduled Live Sessions" actionLabel="See all" onAction={() => onOpenLiveSession?.()} />
       {sessionsList.length === 0 ? (
-        <View style={{ backgroundColor: '#FFFFFF', padding: 16, borderRadius: 14, borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 12 }}>
-          <Text style={{ fontSize: 13, color: brand.muted, textAlign: 'center' }}>
+        <View style={{ backgroundColor: colors.card, padding: 16, borderRadius: 14, borderWidth: 1, borderColor: colors.border, marginBottom: 12 }}>
+          <Text style={{ fontSize: 13, color: colors.muted, textAlign: 'center' }}>
             No upcoming live sessions scheduled yet. Tap "+ Schedule Live" in Sessions to create one!
           </Text>
         </View>
@@ -308,7 +309,7 @@ export function HomeScreen({
             <Pill label={`${meetup.rsvpCount} Attending`} compact />
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Feather name="map-pin" size={12} color={brand.muted} />
+            <Feather name="map-pin" size={12} color={colors.muted} />
             <Text style={styles.mutedCopySmall}>{meetup.location} · {meetup.dateTime}</Text>
           </View>
           <Pressable
@@ -334,10 +335,10 @@ export function HomeScreen({
       ))}
 
       {/* Account Joined Communities */}
-      <SectionHeading title="My Communities" actionLabel="See all" onAction={onOpenCommunity} />
+      <SectionHeading title="My Communities" actionLabel="See all" onAction={() => onOpenCommunity?.()} />
       {joinedCommunities.length === 0 ? (
-        <View style={{ backgroundColor: '#FFFFFF', padding: 16, borderRadius: 14, borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 16 }}>
-          <Text style={{ fontSize: 13, color: brand.muted, textAlign: 'center' }}>
+        <View style={{ backgroundColor: colors.card, padding: 16, borderRadius: 14, borderWidth: 1, borderColor: colors.border, marginBottom: 16 }}>
+          <Text style={{ fontSize: 13, color: colors.muted, textAlign: 'center' }}>
             You haven't joined any communities yet. Discover groups in the Communities tab!
           </Text>
         </View>
@@ -346,7 +347,7 @@ export function HomeScreen({
           <Pressable
             key={community.id}
             hitSlop={hitSlop}
-            onPress={onOpenCommunity}
+            onPress={() => onOpenCommunity?.(community.id)}
             style={({ pressed }) => [styles.communityRowCard, pressed && { opacity: 0.8, transform: [{ scale: 0.98 }] }]}
           >
             <AppImage source={{ uri: community.image }} style={styles.communityThumb} />
@@ -354,7 +355,7 @@ export function HomeScreen({
               <Text style={styles.communityName}>{community.name}</Text>
               <Text style={styles.mutedCopySmall}>{community.members} members · {community.subject}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={18} color={brand.muted} />
+            <Ionicons name="chevron-forward" size={18} color={colors.muted} />
           </Pressable>
         ))
       )}
